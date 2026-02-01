@@ -1,0 +1,48 @@
+# Ignore data folders and raw/processed dataset files
+/Data/
+/Data/**
+
+# Ignore pickled data and model artifacts
+*.pkl
+*.pickle
+models/
+models/*.joblib
+*.joblib
+
+# Python caches and compiled files
+__pycache__/
+*.pyc
+*.pyo
+
+# Test and notebook artifacts
+.pytest_cache/
+.ipynb_checkpoints/
+.ipynb_checkpoints/**
+
+# Virtual environments and environment files
+.venv/
+venv/
+env/
+.env
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Coverage reports
+htmlcov/
+.coverage
+
+# Build/dist
+dist/
+build/
+
+# Temporary files
+*.swp
+*~
+
