@@ -22,18 +22,15 @@ def extract_data_service(data_path: Path):
     phishing_uci_repo = 967
 
     # Extract UCI data
-    extract_uci_data(uci_repo=phishing_uci_repo, data_path=data_path)
+    # extract_uci_data(uci_repo=phishing_uci_repo, data_path=data_path)
 
 
-    data_list = ["simaanjali/tes-upload",
-                 "simaanjali/phising-detection-dataset",
-                 "nitsey/dataset-phising-website",
-                 "eswarchandt/phishing-website-detector",
-                 # phising site urls
-                "taruntiwarihp/phishing-site-urls",
-                 # top searches
-                 "cheedcheed/top1m"
-                     ]
+    data_list = [
+            # phising site urls -- addition to UCI
+            "taruntiwarihp/phishing-site-urls",
+             # top searches
+             "cheedcheed/top1m"
+    ]
 
     # Extract Kaggle data
     extract_kaggle_data(data_list=data_list)
@@ -42,6 +39,6 @@ def extract_data_service(data_path: Path):
 ## fetch data when this script is run directly
 if __name__ == '__main__':
 
-    clean_dir(RAW_DATA_PATH)
+    # clean_dir(RAW_DATA_PATH)
 
     extract_data_service(data_path=RAW_DATA_PATH)

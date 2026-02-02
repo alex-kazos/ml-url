@@ -65,8 +65,8 @@ def extract_kaggle_data(data_list= type[list]):
             # Download latest version
             path = kagglehub.dataset_download(dataset)
             # Move data to project data folder
-            # kaggle_dataset_dir = Path(path)
-            kaggle_dataset_dir = Path(path).parent.parent.parent.parent
+            kaggle_dataset_dir = Path(path)
+            # kaggle_dataset_dir = Path(path).parent.parent.parent.parent # this move the whole folder to Data/raw
 
             for item in kaggle_dataset_dir.iterdir():
                 print(item)
