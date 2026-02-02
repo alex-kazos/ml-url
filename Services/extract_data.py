@@ -1,31 +1,34 @@
 from pathlib import Path
 
-
-# Import utility functions
-from Utilities.Services.extract_data_utils import (
-    extract_uci_data,
-    extract_kaggle_data
-    )
-
 # warnings == success
 import warnings
 warnings.filterwarnings("ignore")
 
-def extract_data_service():
+# Import utility functions
+from Utilities.Services.extract_data_utils import (
+    extract_uci_data,
+    extract_kaggle_data,
+    clean_dir
+    )
+
+
+RAW_DATA_PATH = Path('..') / 'Data' / 'raw'
+
+def extract_data_service(data_path: Path):
     ''' Service to extract data from various sources
     '''
 
-    save_file = Path('..') / 'Data' / 'phishing_url_uci.pkl'
+    # UCI repository ID for Phishing URL dataset
     phishing_uci_repo = 967
 
     # Extract UCI data
-    extract_uci_data(uci_repo=phishing_uci_repo, save_file=save_file)
+    extract_uci_data(uci_repo=phishing_uci_repo, data_path=data_path)
 
 
     data_list = ["simaanjali/tes-upload",
                  "simaanjali/phising-detection-dataset",
                  "nitsey/dataset-phising-website",
-                 "eswarchandt/phishing-website-detector"
+                 "eswarchandt/phishing-website-detector",
                  # phising site urls
                 "taruntiwarihp/phishing-site-urls",
                  # top searches
@@ -35,3 +38,10 @@ def extract_data_service():
     # Extract Kaggle data
     extract_kaggle_data(data_list=data_list)
 
+
+## fetch data when this script is run directly
+if __name__ == '__main__':
+
+    clean_dir(RAW_DATA_PATH)
+
+    extract_data_service(data_path=RAW_DATA_PATH)
