@@ -1,8 +1,13 @@
-from pathlib import Path
-
 # warnings == success
 import warnings
 warnings.filterwarnings("ignore")
+
+# Import configuration
+from Utilities.config import (
+    RAW_DATA_PATH,
+    UCI_PHISHING_REPO_ID,
+    KAGGLE_DATASETS
+)
 
 # Import utility functions
 from Utilities.Services.extract_data_utils import (
@@ -12,33 +17,28 @@ from Utilities.Services.extract_data_utils import (
     )
 
 
-RAW_DATA_PATH = Path('..') / 'Data' / 'raw'
-
-def extract_data_service(data_path: Path):
+def extract_data_service(data_path=None):
     ''' Service to extract data from various sources
+    
+    Parameters
+    ----------
+    data_path : Path, optional
+        Path to raw data directory. If None, uses RAW_DATA_PATH from config.
     '''
 
-    # UCI repository ID for Phishing URL dataset
-    phishing_uci_repo = 967
+    if data_path is None:
+        data_path = RAW_DATA_PATH
 
     # Extract UCI data
-    # extract_uci_data(uci_repo=phishing_uci_repo, data_path=data_path)
-
-
-    data_list = [
-            # phising site urls -- addition to UCI
-            "taruntiwarihp/phishing-site-urls",
-             # top searches
-             "cheedcheed/top1m"
-    ]
+    # extract_uci_data(uci_repo=UCI_PHISHING_REPO_ID, data_path=data_path)
 
     # Extract Kaggle data
-    extract_kaggle_data(data_list=data_list)
+    extract_kaggle_data(data_list=KAGGLE_DATASETS)
 
 
 ## fetch data when this script is run directly
 if __name__ == '__main__':
 
-    # clean_dir(RAW_DATA_PATH)
+    clean_dir(RAW_DATA_PATH)
 
     extract_data_service(data_path=RAW_DATA_PATH)

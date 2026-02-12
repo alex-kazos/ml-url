@@ -14,3 +14,4 @@ ucimlrepo>=0.0.7
 kagglehub>=0.1.0
 jupyter>=1.0.0
 openpyxl>=3.1.0
+python-dotenv>=1.0.0
