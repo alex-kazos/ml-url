@@ -305,9 +305,3 @@ def preprocess_kaggle_phishing(df: pd.DataFrame) -> pd.DataFrame:
     df = _add_url_char_prob_and_similarity(df, url_s)
 
     return df
-
-
-def load_and_preprocess_kaggle_phishing() -> pd.DataFrame:
-    """Convenience wrapper to read and preprocess the Kaggle phishing dataset."""
-    raw_df = read_kaggle_phishing_data()
-    return preprocess_kaggle_phishing(raw_df)

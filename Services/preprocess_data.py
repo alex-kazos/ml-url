@@ -2,7 +2,8 @@ from Utilities.config import PROCESSED_DATA_PATH
 from Utilities.Services.preprocess_data_utils import (
     read_uci_phishing_data,
     read_kaggle_top_searches,
-    load_and_preprocess_kaggle_phishing,
+    preprocess_kaggle_phishing,
+    read_kaggle_phishing_data,
 )
 
 from Classes.DataToMerge import DataToMerge
@@ -38,21 +39,19 @@ def preprocess_data_service(run_extract: bool = False) -> DataToMerge:
         extract_data_service()
 
     # Load datasets
-    df_uci = read_uci_phishing_data()
-    df_kaggle = load_and_preprocess_kaggle_phishing()
-    df_top1m = read_kaggle_top_searches()
+    urls_uci = read_uci_phishing_data()
+    urls_kaggle = read_kaggle_phishing_data()
+
+    urls_kaggle = preprocess_kaggle_phishing(urls_kaggle)
 
     # Persist processed versions for downstream use
     PROCESSED_DATA_PATH.mkdir(parents=True, exist_ok=True)
-    df_uci.to_pickle(PROCESSED_DATA_PATH / "uci_phishing.pkl")
-    df_kaggle.to_pickle(PROCESSED_DATA_PATH / "kaggle_phishing_preprocessed.pkl")
-    df_top1m.to_pickle(PROCESSED_DATA_PATH / "kaggle_top1m.pkl")
+    urls_uci.to_pickle(PROCESSED_DATA_PATH / "uci_phishing.pkl")
+    urls_kaggle.to_pickle(PROCESSED_DATA_PATH / "kaggle_phishing_preprocessed.pkl")
 
-    # Create and return DataToMerge instance
     dataToMerge = DataToMerge(
-        urls_uci=df_uci,
-        urls_kaggle=df_kaggle,
-        top_urls=df_top1m,
+        urls_uci=urls_uci,
+        urls_kaggle=urls_kaggle,
     )
     
     return dataToMerge
