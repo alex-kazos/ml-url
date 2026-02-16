@@ -283,22 +283,22 @@ def preprocess_kaggle_phishing(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
-    # Step 1: basic URL decomposition
+    # Basic URL decomposition
     df, url_s, lower_url = _add_basic_url_parts(df)
 
-    # Step 2: character counts and ratio-based metrics
+    # Character counts and ratio-based metrics
     df = _add_char_count_and_ratio_features(df, url_s)
 
-    # Step 3: obfuscation-related signals
+    # Obfuscation-related signals
     df = _add_obfuscation_features(df, url_s)
 
-    # Step 4: keyword flags derived from the URL string
+    # Keyword flags derived from the URL string
     df = _add_keyword_flags(df, lower_url)
 
-    # Step 5: character continuation behaviour along the URL
+    # Character continuation behavior along the URL
     df = _add_char_continuation_feature(df, url_s)
 
-    # Step 6: label encoding and TLD-based legitimacy probabilities
+    # Label encoding and TLD-based legitimacy probabilities
     df = _add_label_and_tld_prob_features(df)
 
     # Step 7: URL character probability model and similarity index
