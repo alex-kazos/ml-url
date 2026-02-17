@@ -1,25 +1,25 @@
+from pathlib import Path
+
+# Import configuration
 from Utilities.config import PROCESSED_DATA_PATH
+
+# Import utility functions
 from Utilities.Services.preprocess_data_utils import (
     read_uci_phishing_data,
-    read_kaggle_top_searches,
-    load_and_preprocess_kaggle_phishing,
+    preprocess_kaggle_phishing,
+    read_kaggle_phishing_data,
 )
-
+# Import data class
 from Classes.DataToMerge import DataToMerge
 
-def preprocess_data_service(run_extract: bool = False) -> DataToMerge:
+
+def preprocess_data_service(pkl_path:Path=None) -> DataToMerge:
     """Service to load and preprocess all datasets.
 
     This step assumes that the raw data has been downloaded by
     :mod:`Services.extract_data` into the paths configured in
     :mod:`Utilities.config`. Optionally, it can trigger the extract
     step directly.
-
-    Parameters
-    ----------
-    run_extract : bool, optional
-        If ``True``, run :func:`Services.extract_data.extract_data_service`
-        before preprocessing to ensure the raw files exist.
 
     Returns
     -------
@@ -31,28 +31,23 @@ def preprocess_data_service(run_extract: bool = False) -> DataToMerge:
           URL-based features (mirrors the notebook logic).
         - ``top_urls``: Top 1M websites dataframe (as loaded).
     """
-    if run_extract:
-        # Import lazily to avoid circular imports at module load time.
-        from Services.extract_data import extract_data_service
-
-        extract_data_service()
-
     # Load datasets
-    df_uci = read_uci_phishing_data()
-    df_kaggle = load_and_preprocess_kaggle_phishing()
-    df_top1m = read_kaggle_top_searches()
+    urls_uci = read_uci_phishing_data()
+    urls_kaggle = read_kaggle_phishing_data()
 
-    # Persist processed versions for downstream use
-    PROCESSED_DATA_PATH.mkdir(parents=True, exist_ok=True)
-    df_uci.to_pickle(PROCESSED_DATA_PATH / "uci_phishing.pkl")
-    df_kaggle.to_pickle(PROCESSED_DATA_PATH / "kaggle_phishing_preprocessed.pkl")
-    df_top1m.to_pickle(PROCESSED_DATA_PATH / "kaggle_top1m.pkl")
+    # Preprocess Kaggle phishing data (add URL-based features)
+    urls_kaggle = preprocess_kaggle_phishing(urls_kaggle)
 
-    # Create and return DataToMerge instance
+    if pkl_path:
+        # Persist processed versions for downstream use
+        pkl_path.mkdir(parents=True, exist_ok=True)
+        # save the preprocessed datasets for downstream use
+        urls_uci.to_pickle(pkl_path / "uci_phishing.pkl")
+        urls_kaggle.to_pickle(pkl_path / "kaggle_phishing_preprocessed.pkl")
+
     dataToMerge = DataToMerge(
-        urls_uci=df_uci,
-        urls_kaggle=df_kaggle,
-        top_urls=df_top1m,
+        urls_uci=urls_uci,
+        urls_kaggle=urls_kaggle,
     )
     
     return dataToMerge
@@ -60,4 +55,4 @@ def preprocess_data_service(run_extract: bool = False) -> DataToMerge:
 
 if __name__ == "__main__":
     # By default, assume extract step has already been run.
-    preprocess_data_service(run_extract=False)
+    preprocess_data_service(pkl_path=PROCESSED_DATA_PATH)

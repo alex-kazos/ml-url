@@ -17,7 +17,6 @@ class DataToMerge:
             self,
             urls_uci: DataFrame,
             urls_kaggle: DataFrame,
-            top_urls: DataFrame,
     ):
         """Initialize DataToMerge with three preprocessed dataframes.
 
@@ -27,9 +26,6 @@ class DataToMerge:
             UCI phishing dataset.
         urls_kaggle : pd.DataFrame
             Kaggle phishing URLs with engineered features.
-        top_urls : pd.DataFrame
-            Top 1M websites dataframe.
         """
         self.urls_uci = urls_uci
         self.urls_kaggle = urls_kaggle
-        self.top_urls = top_urls

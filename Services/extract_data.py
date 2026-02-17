@@ -30,7 +30,7 @@ def extract_data_service(data_path=None):
         data_path = RAW_DATA_PATH
 
     # Extract UCI data
-    # extract_uci_data(uci_repo=UCI_PHISHING_REPO_ID, data_path=data_path)
+    extract_uci_data(uci_repo=UCI_PHISHING_REPO_ID, data_path=data_path)
 
     # Extract Kaggle data
     extract_kaggle_data(data_list=KAGGLE_DATASETS)
