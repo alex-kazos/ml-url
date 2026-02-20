@@ -7,10 +7,6 @@ import numpy as np
 import pandas as pd
 
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
 SUSPICIOUS_TLDS = frozenset({
     "tk", "ml", "ga", "cf", "gq", "xyz", "top", "buzz", "club",
     "work", "date", "bid", "stream", "download", "racing", "win",
@@ -29,11 +25,6 @@ BRAND_NAMES = [
     "netflix", "ebay", "chase", "wells", "citi", "instagram",
     "linkedin", "twitter", "yahoo", "dropbox", "adobe", "whatsapp",
 ]
-
-
-# ---------------------------------------------------------------------------
-# Individual feature helpers
-# ---------------------------------------------------------------------------
 
 
 def _shannon_entropy(text: str) -> float:
@@ -70,11 +61,6 @@ def _extract_query(url: str) -> str:
 
 # Pre-compiled regex for port detection  (e.g. `:8080/`)
 _PORT_RE = re.compile(r":(\d{2,5})(/|$)")
-
-
-# ---------------------------------------------------------------------------
-# Public feature-adding functions
-# ---------------------------------------------------------------------------
 
 
 def add_entropy_features(df: pd.DataFrame, url_s: pd.Series) -> pd.DataFrame:
@@ -161,10 +147,6 @@ def add_vowel_ratio(df: pd.DataFrame, url_s: pd.Series) -> pd.DataFrame:
     df["VowelRatio"] = (num_vowels / num_letters).fillna(0.0)
     return df
 
-
-# ---------------------------------------------------------------------------
-# Master function – applies all new features in one call
-# ---------------------------------------------------------------------------
 
 
 def add_all_new_features(df: pd.DataFrame) -> pd.DataFrame:

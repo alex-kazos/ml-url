@@ -7,23 +7,23 @@ import pandas as pd
 from Services.merge_data import merge_data_service
 from Services.preprocess_data import preprocess_data_service
 
-# Import configuration
+# Import utility functions
 from Utilities.Services.feature_engineering_utils import add_all_new_features
 
 # Import configuration
 from Utilities.config import PROCESSED_DATA_PATH
 
 # # Columns to drop before saving the ML-ready dataset.
-# # - Text columns that are not numeric features.
-# # - `Label` is redundant with `label_binary`.
-# # - `TLDLegitimateProb` is derived from labels → data leakage.
-# COLUMNS_TO_DROP = [
-#     "URL",
-#     "Domain",
-#     "TLD",
-#     "Label",
-#     "TLDLegitimateProb",
-# ]
+# - Text columns that are not numeric features.
+# - `Label` is redundant with `label_binary`.
+# - `TLDLegitimateProb` is derived from labels → data leakage.
+COLUMNS_TO_DROP = [
+    "URL",
+    "Domain",
+    "TLD",
+    "Label",
+    "TLDLegitimateProb",
+]
 
 
 def feature_engineering_service(merged_df:pd.DataFrame=None,pkl_path:Path=None) -> pd.DataFrame:
@@ -42,15 +42,15 @@ def feature_engineering_service(merged_df:pd.DataFrame=None,pkl_path:Path=None) 
     """
     if merged_df is None:
         # Load data
-        pkl_path = PROCESSED_DATA_PATH / "final_dataset.pkl"
-        merged_df = pd.read_pickle(pkl_path)
+        read_df = PROCESSED_DATA_PATH / "final_dataset.pkl"
+        merged_df = pd.read_pickle(read_df)
         print(f"Loaded dataset from {pkl_path}  (shape: {merged_df.shape})")
 
     # Add new features
     merged_df = add_all_new_features(merged_df)
     print(f"After feature engineering: {merged_df.shape[1]} columns")
 
-    # # --- Drop non-numeric / leaky columns ---
+    # Drop non-numeric and leaky columns
     # cols_present = [c for c in COLUMNS_TO_DROP if c in df.columns]
     # df.drop(columns=cols_present, inplace=True)
     # print(f"Dropped columns: {cols_present}")
@@ -65,8 +65,10 @@ def feature_engineering_service(merged_df:pd.DataFrame=None,pkl_path:Path=None) 
         # Save
         pkl_path.mkdir(parents=True, exist_ok=True)
         out_pkl = pkl_path / "ml_ready_dataset.pkl"
+        out_csv = pkl_path / "ml_ready_dataset.csv"
 
         merged_df.to_pickle(out_pkl)
+        merged_df.to_csv(out_csv, index=False)
 
     return merged_df
 
