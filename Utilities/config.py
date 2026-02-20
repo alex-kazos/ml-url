@@ -16,6 +16,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 DATA_ROOT = PROJECT_ROOT / os.getenv('DATA_ROOT', 'Data')
 RAW_DATA_PATH = PROJECT_ROOT / os.getenv('RAW_DATA_PATH', 'Data/raw')
 PROCESSED_DATA_PATH = PROJECT_ROOT / os.getenv('PROCESSED_DATA_PATH', 'Data/processed')
+MODELS_PATH = PROJECT_ROOT / os.getenv('MODELS_PATH', 'Models')
 
 # File names
 UCI_PHISHING_FILE = os.getenv('UCI_PHISHING_FILE', 'phishing_url_uci.pkl')
