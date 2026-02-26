@@ -26,7 +26,7 @@ COLUMNS_TO_DROP = [
 ]
 
 
-def feature_engineering_service(merged_df:pd.DataFrame=None,pkl_path:Path=None) -> pd.DataFrame:
+def feature_engineering_service(df:pd.DataFrame=None,pkl_path:Path=None) -> pd.DataFrame:
     """Run feature engineering and produce an ML-ready dataset.
 
     1. Loads ``final_dataset.pkl`` (or ``.csv`` fallback).
@@ -40,15 +40,15 @@ def feature_engineering_service(merged_df:pd.DataFrame=None,pkl_path:Path=None) 
     pd.DataFrame
         The ML-ready dataset.
     """
-    if merged_df is None:
+    if df is None:
         # Load data
         read_df = PROCESSED_DATA_PATH / "final_dataset.pkl"
-        merged_df = pd.read_pickle(read_df)
-        print(f"Loaded dataset from {pkl_path}  (shape: {merged_df.shape})")
+        df = pd.read_pickle(read_df)
+        print(f"Loaded dataset from {pkl_path}  (shape: {df.shape})")
 
     # Add new features
-    merged_df = add_all_new_features(merged_df)
-    print(f"After feature engineering: {merged_df.shape[1]} columns")
+    df = add_all_new_features(df)
+    print(f"After feature engineering: {df.shape[1]} columns")
 
     # Drop non-numeric and leaky columns
     # cols_present = [c for c in COLUMNS_TO_DROP if c in df.columns]
@@ -56,9 +56,9 @@ def feature_engineering_service(merged_df:pd.DataFrame=None,pkl_path:Path=None) 
     # print(f"Dropped columns: {cols_present}")
 
     # Handle inf / NaN
-    merged_df.replace([np.inf, -np.inf], np.nan, inplace=True)
-    nan_before = merged_df.isna().sum().sum()
-    merged_df.fillna(0, inplace=True)
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
+    nan_before = df.isna().sum().sum()
+    df.fillna(0, inplace=True)
     print(f"Replaced {nan_before} NaN/inf values with 0")
 
     if pkl_path:
@@ -67,10 +67,10 @@ def feature_engineering_service(merged_df:pd.DataFrame=None,pkl_path:Path=None) 
         out_pkl = pkl_path / "ml_ready_dataset.pkl"
         out_csv = pkl_path / "ml_ready_dataset.csv"
 
-        merged_df.to_pickle(out_pkl)
-        merged_df.to_csv(out_csv, index=False)
+        df.to_pickle(out_pkl)
+        df.to_csv(out_csv, index=False)
 
-    return merged_df
+    return df
 
 
 if __name__ == "__main__":

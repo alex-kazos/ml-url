@@ -160,6 +160,7 @@ def _print_summary(results: Dict[str, Dict[str, float]]) -> None:
 
 
 def model_training_service(
+    df: pd.DataFrame = None,
     data_path: Path = None,
     models_dir: Path = None,
     test_size: float = 0.2,
@@ -169,6 +170,8 @@ def model_training_service(
 
     Parameters
     ----------
+    df: pd.DataFrame, optional
+        If provided, use this dataframe directly instead of loading from CSV.
     data_path : Path, optional
         Path to the ML-ready CSV. Defaults to PROCESSED_DATA_PATH / "ml_ready_dataset.csv".
     models_dir : Path, optional
@@ -183,15 +186,19 @@ def model_training_service(
     dict
         Mapping of model name → metrics dict.
     """
-    if data_path is None:
-        data_path = PROCESSED_DATA_PATH / "ml_ready_dataset.csv"
+    if df is not None:
+        print(f"Using provided DataFrame (shape: {df.shape})")
+    else:
+        if data_path is None:
+            data_path = PROCESSED_DATA_PATH / "ml_ready_dataset.csv"
+            df = load_data(data_path)
     if models_dir is None:
         models_dir = MODELS_PATH
+
 
     models_dir = Path(models_dir)
     models_dir.mkdir(parents=True, exist_ok=True)
 
-    df = load_data(data_path)
     X_train, X_test, y_train, y_test = prepare_data(df, test_size, random_state)
 
     # Define baseline models
