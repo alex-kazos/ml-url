@@ -77,7 +77,6 @@ The following table compares the performance of the three trained models on the 
 ##### ROC Curve
 [![Logistic Regression ROC Curve](Logistic_Regression_roc_curve.png)](Logistic_Regression_roc_curve.png)
 
-
 ---
 
 ### And the winner is... 🥁 Random Forest!🎉
@@ -103,3 +102,5 @@ _problems for future me_
 | **XGBoost**             |   0.8894   |   0.8742   | **0.9097** |   0.8916   |   0.9605   |   **0.93s**   |
 | **Logistic Regression** |   0.7861   |   0.7580   |   0.8406   |   0.7972   |   0.8793   |    10.34s     |
 
+
+[Go to Readme](../README.md)
