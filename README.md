@@ -71,6 +71,14 @@ extract_data → preprocess_data → merge_data → feature_engineering → mode
 
 ---
 
+### Check Models 
+
+Navigate to `Models/Model_Comparison.md` for a detailed comparison of the trained models, including performance metrics, confusion matrices, ROC curves, and feature importance analyses.
+
+[View Model Comparison](Models/Model_Comparison.md)
+
+---
+
 ## Next Steps
 
 - [ ] **MLflow Integration** — Log parameters, metrics, and model artifacts to MLflow for experiment tracking and model comparison.
