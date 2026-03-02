@@ -1,21 +1,61 @@
-#TOD0: create a pipeline for so the user inputs a URL and the model predicts if it's phishing or not, including data loading, preprocessing, and model training steps.
+"""
+Inference Pipeline
+==================
+Entry point for phishing-URL detection at serve time.
+
+Usage
+-----
+Run from the project root directory:
+
+    python -m Pipelines.inference_pipeline
+
+or simply:
+
+    python Pipelines/inference_pipeline.py
+
+The user is prompted to enter a URL. The pipeline then:
+  1. Preprocesses the URL (URL decomposition, character features, etc.)
+  2. Applies feature engineering (entropy, path features, keywords, …)
+  3. Loads the trained ``Random_Forest.pkl`` model
+  4. Returns a probability that the URL is suspicious / phishing
+
+Output convention
+-----------------
+  label = 1  →  suspicious / phishing
+  label = 0  →  legitimate / safe
+"""
+
+import sys
+from pathlib import Path
+
+# Ensure the project root is on sys.path when the script is run directly
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from Services.inference_service import inference_service
 
 
-from Services.preprocess_data import preprocess_data_inference_service
-from Services.feature_engineering import feature_engineering_service
+def main() -> None:
+    print("=" * 60)
+    print("  Phishing URL Detection — Inference Pipeline")
+    print("=" * 60)
+
+    url = input("\nEnter a URL to check: ").strip()
+
+    if not url:
+        print("No URL entered. Exiting.")
+        return
+
+    result = inference_service(url)
+
+    # Surface the key numbers cleanly for the user
+    print("\n--- Summary ---")
+    print(f"  URL         : {result['url']}")
+    print(f"  Probability : {result['probability']:.4f}  (phishing likelihood)")
+    print(f"  Label       : {result['label']}  (1 = suspicious, 0 = legitimate)")
+    print(f"  Verdict     : {result['verdict']}")
 
 
 if __name__ == "__main__":
-
-    input_url = input("Enter a URL to check if it's phishing or not: ")
-
-    # Step 1: Preprocess data
-    url_df = preprocess_data_inference_service(input_url)
-
-    # Step 2: Feature engineering
-    ml_ready_df = feature_engineering_service(df=url_df)
-
-    # TODO: Step 3: Load model and predict (to be implemented)
-    # model = load_model()  # Implement this function to load your trained model
-    # prediction = model.predict(ml_ready_df)
-    # print(f"The URL '{input_url}' is predicted to be: {'Phishing' if prediction[0] == 1 else 'Legitimate'}")
+    main()
