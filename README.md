@@ -1,10 +1,10 @@
-# 🔍 Phishing URL Detection
+# Phishing URL Detection
 
 A machine learning pipeline that classifies URLs as **phishing** (malicious) or **safe** (legitimate), with MLflow experiment tracking and a web UI for real-time predictions.
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 ml-url/
@@ -17,13 +17,17 @@ ml-url/
 ├── Models/                         # Saved trained models & evaluation plots
 │
 ├── Notebook/                       # Jupyter notebooks for exploration & analysis
+|
+├── Pipelines/                      # Complete pipelines for Training & Inference
+│   ├── training_pipeline.py        # Orchestrates the full training pipeline
+│   └── inference_pipeline.py       # Orchestrates the inference pipeline for
 │
 ├── Services/                       # Core pipeline services (orchestration layer)
-│   ├── extract_data.py             # ✅ Download datasets from UCI & Kaggle
-│   ├── preprocess_data.py          # ✅ Load & preprocess raw datasets
-│   ├── merge_data.py               # ✅ Merge, deduplicate & balance datasets
-│   ├── feature_engineering.py      # ✅ Engineer features & produce ML-ready dataset
-│   └── model_training.py           # ✅ Train, evaluate & save baseline models
+│   ├── extract_data.py             # Download datasets from UCI & Kaggle
+│   ├── preprocess_data.py          # Load & preprocess raw datasets
+│   ├── merge_data.py               # Merge, deduplicate & balance datasets
+│   ├── feature_engineering.py      # Engineer features & produce ML-ready dataset
+│   └── model_training.py           # Train, evaluate & save baseline models
 │
 ├── Utilities/                      # Helper functions & configuration
 │   ├── config.py                   # Central path & constant definitions
@@ -45,7 +49,7 @@ ml-url/
 
 ---
 
-## ✅ What Has Been Implemented
+## What Has Been Implemented
 
 ### Services — Pipeline Steps
 
@@ -67,7 +71,15 @@ extract_data → preprocess_data → merge_data → feature_engineering → mode
 
 ---
 
-## 🔜 Next Steps
+### Check Models 
+
+Navigate to `Models/Model_Comparison.md` for a detailed comparison of the trained models, including performance metrics, confusion matrices, ROC curves, and feature importance analyses.
+
+[View Model Comparison](Models/Model_Comparison.md)
+
+---
+
+## Next Steps
 
 - [ ] **MLflow Integration** — Log parameters, metrics, and model artifacts to MLflow for experiment tracking and model comparison.
 - [ ] **Web UI** — Build a small Streamlit or FastAPI app so users can input a URL and get a safe/suspicious prediction in real time.
@@ -76,7 +88,7 @@ extract_data → preprocess_data → merge_data → feature_engineering → mode
 
 ---
 
-## 📦 Dependencies
+## Dependencies
 
 ```
 pandas
@@ -90,7 +102,7 @@ streamlit       # (upcoming)
 
 ---
 
-## 📊 Data Sources
+## Data Sources
 
 - [UCI — PhiUSIIL Phishing URL](https://archive.ics.uci.edu/dataset/967/phiusiil+phishing+url+dataset)
 - [Kaggle — Phishing Site URLs](https://www.kaggle.com/datasets/taruntiwarihp/phishing-site-urls)

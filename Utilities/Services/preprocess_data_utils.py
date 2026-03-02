@@ -263,7 +263,7 @@ def _add_url_char_prob_and_similarity(df: pd.DataFrame, url_s: pd.Series) -> pd.
     return df
 
 
-def preprocess_kaggle_phishing(df: pd.DataFrame) -> pd.DataFrame:
+def preprocess_phishing(df: pd.DataFrame) -> pd.DataFrame:
     """Apply feature engineering to the raw Kaggle phishing URL dataset.
 
     The transformations mirror the logic implemented in

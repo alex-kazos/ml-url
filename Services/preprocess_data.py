@@ -1,12 +1,14 @@
 from pathlib import Path
 
+import pandas as pd
+
 # Import configuration
 from Utilities.config import PROCESSED_DATA_PATH
 
 # Import utility functions
 from Utilities.Services.preprocess_data_utils import (
     read_uci_phishing_data,
-    preprocess_kaggle_phishing,
+    preprocess_phishing,
     read_kaggle_phishing_data,
 )
 # Import data class
@@ -36,7 +38,7 @@ def preprocess_data_service(pkl_path:Path=None) -> DataToMerge:
     urls_kaggle = read_kaggle_phishing_data()
 
     # Preprocess Kaggle phishing data (add URL-based features)
-    urls_kaggle = preprocess_kaggle_phishing(urls_kaggle)
+    urls_kaggle = preprocess_phishing(urls_kaggle)
 
     if pkl_path:
         # Persist processed versions for downstream use
@@ -51,6 +53,30 @@ def preprocess_data_service(pkl_path:Path=None) -> DataToMerge:
     )
     
     return dataToMerge
+
+
+def preprocess_data_inference_service(url:str) -> pd.DataFrame:
+    """Service to load and preprocess all datasets.
+
+    This step assumes that the raw data has been downloaded by
+    :mod:`Services.extract_data` into the paths configured in
+    :mod:`Utilities.config`. Optionally, it can trigger the extract
+    step directly.
+
+    Returns
+    -------
+    pd.DataFrame
+        The preprocessed dataset ready for feature engineering:
+    """
+
+    url_df = pd.DataFrame({
+        "url": [url],
+    })
+
+    url_preprocessed = preprocess_phishing(url_df)
+
+
+    return url_preprocessed
 
 
 if __name__ == "__main__":

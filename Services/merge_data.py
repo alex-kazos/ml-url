@@ -4,7 +4,7 @@ from pathlib import Path
 # Import configuration
 from Utilities.config import PROCESSED_DATA_PATH
 from Utilities.Services.preprocess_data_utils import (
-    preprocess_kaggle_phishing,
+    preprocess_phishing,
 )
 
 # Import utility functions

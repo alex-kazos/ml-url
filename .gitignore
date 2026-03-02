@@ -5,7 +5,6 @@
 # Ignore pickled data and model artifacts
 *.pkl
 *.pickle
-models/
 models/*.joblib
 *.joblib
 
