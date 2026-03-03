@@ -1,12 +1,3 @@
-"""
-Inference service for phishing URL detection.
-
-Takes a raw URL string, runs the same preprocessing and feature-engineering
-steps that were applied during training, loads the saved Random Forest model,
-and returns:
-  - ``label``       : int  — 1 = suspicious / phishing, 0 = legitimate
-  - ``probability`` : float — model confidence that the URL is suspicious
-"""
 
 import pickle
 from pathlib import Path
@@ -29,9 +20,8 @@ from Utilities.Services.feature_engineering_utils import add_all_new_features
 # Import configuration
 from Utilities.config import MODELS_PATH
 
-# ---------------------------------------------------------------------------
-# Columns that were dropped before training (must be excluded at inference)
-# ---------------------------------------------------------------------------
+
+# Columns to be dropped
 COLUMNS_TO_DROP = [
     "URL",
     "Domain",
@@ -44,10 +34,6 @@ COLUMNS_TO_DROP = [
 # Default model file
 DEFAULT_MODEL_NAME = "Random_Forest"
 
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
 
 
 def _preprocess_url_for_inference(url: str) -> pd.DataFrame:
@@ -139,10 +125,6 @@ def _load_model(model_name: str = DEFAULT_MODEL_NAME, models_dir: Path = MODELS_
     return model
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
 
 def inference_service(
     url: str,
@@ -204,16 +186,6 @@ def inference_service(
         X = X.reindex(columns=model.feature_names_in_, fill_value=0)
 
     raw_label = int(model.predict(X)[0])
-
-    # Training convention (from preprocess_data_utils.py):
-    #   label_binary = 1  →  "good"  (legitimate URL)
-    #   label_binary = 0  →  "bad"   (phishing / suspicious URL)
-    #
-    # So predict_proba columns are: [P(class=0)=P(phishing), P(class=1)=P(legitimate)]
-    #
-    # User-facing convention (as requested):
-    #   label = 1  →  suspicious / phishing
-    #   label = 0  →  legitimate
 
     phishing_probability = 0.0
     if hasattr(model, "predict_proba"):

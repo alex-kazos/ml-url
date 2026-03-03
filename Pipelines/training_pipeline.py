@@ -1,5 +1,3 @@
-#TODO: Create pipeline for training the model, including data loading, preprocessing, and model training steps.
-# aka import services and call them in the right order to train the model
 import time
 from Services.extract_data import extract_data_service
 from Services.merge_data import merge_data_service
