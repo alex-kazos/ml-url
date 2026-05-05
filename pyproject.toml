@@ -1,0 +1,34 @@
+[project]
+name = "ml-url"
+version = "0.1.0"
+description = "Phishing URL detection pipeline and inference service"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "scikit-learn>=1.3.0",
+    "xgboost>=2.0.0",
+    "tldextract>=5.1.0",
+    "python-whois>=0.8.0",
+    "requests>=2.31.0",
+    "matplotlib>=3.7.0",
+    "seaborn>=0.12.0",
+    "joblib>=1.3.0",
+    "urllib3>=2.0.0",
+    "ucimlrepo>=0.0.7",
+    "kagglehub>=0.1.0",
+    "jupyter>=1.0.0",
+    "openpyxl>=3.1.0",
+    "python-dotenv>=1.0.0",
+    "pytest>=8.0.0",
+    "ruff>=0.5.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["Tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
