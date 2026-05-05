@@ -3,11 +3,16 @@ Central configuration module for loading environment variables.
 This module provides a single source of truth for all configuration values.
 """
 from pathlib import Path
-from dotenv import load_dotenv
 import os
 
-# Load environment variables from .env file
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
+
+# Load environment variables from .env file when python-dotenv is installed.
+if load_dotenv is not None:
+    load_dotenv()
 
 # Get project root directory (parent of Utilities folder)
 PROJECT_ROOT = Path(__file__).parent.parent

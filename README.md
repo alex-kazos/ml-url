@@ -1,108 +1,107 @@
 # Phishing URL Detection
 
-A machine learning pipeline that classifies URLs as **phishing** (malicious) or **safe** (legitimate), with MLflow experiment tracking and a web UI for real-time predictions.
-
----
+A machine learning pipeline that classifies URLs as phishing or legitimate. The
+project includes data extraction, preprocessing, feature engineering, model
+training, evaluation plots, and command-line inference for a single URL.
 
 ## Project Structure
 
-```
+```text
 ml-url/
-│
-├── Classes/                        # Data classes
-│   └── DataToMerge.py              # DTO for passing datasets between pipeline steps
-│
-├── Data/                           # Raw & processed datasets (gitignored)
-│
-├── Models/                         # Saved trained models & evaluation plots
-│
-├── Notebook/                       # Jupyter notebooks for exploration & analysis
-|
-├── Pipelines/                      # Complete pipelines for Training & Inference
-│   ├── training_pipeline.py        # Orchestrates the full training pipeline
-│   └── inference_pipeline.py       # Orchestrates the inference pipeline for
-│
-├── Services/                       # Core pipeline services (orchestration layer)
-│   ├── extract_data.py             # Download datasets from UCI & Kaggle
-│   ├── preprocess_data.py          # Load & preprocess raw datasets
-│   ├── merge_data.py               # Merge, deduplicate & balance datasets
-│   ├── feature_engineering.py      # Engineer features & produce ML-ready dataset
-│   └── model_training.py           # Train, evaluate & save baseline models
-│
-├── Utilities/                      # Helper functions & configuration
-│   ├── config.py                   # Central path & constant definitions
-│   └── Services/                   # Utility functions per pipeline step
-│       ├── extract_data_utils.py
-│       ├── preprocess_data_utils.py
-│       ├── merge_data_utils.py
-│       ├── feature_engineering_utils.py
-│       └── model_training_utils.py
-│
-├── app/                            # 🔜 Web UI (Streamlit / FastAPI)
-│   └── app.py                      #    User inputs a URL → returns safe / suspicious
-│
-├── mlruns/                         # 🔜 MLflow tracking directory (gitignored)
-│
-├── requirements.txt
-└── README.md
+|-- Classes/                 # Lightweight data containers
+|-- Data/                    # Raw and processed datasets, gitignored
+|-- Models/                  # Local model artifacts and plots, gitignored where generated
+|-- Notebook/                # Exploration notebooks
+|-- Pipelines/               # Training and inference entrypoints
+|-- Services/                # Pipeline service layer
+|-- Tests/                   # Contract tests for labels, features, and inference artifacts
+|-- Utilities/               # Config and reusable helper functions
+|-- pyproject.toml           # Tooling/test configuration
+|-- requirements.txt
+`-- README.md
 ```
 
----
+## Current Pipeline
 
-## What Has Been Implemented
-
-### Services — Pipeline Steps
-
-Each service can run independently or be chained together as a full pipeline.
-
-| #   | Service                 | File                     | Description                                                                                                                                                                                                                 |
-| --- | ----------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **Extract Data**        | `extract_data.py`        | Downloads phishing URL datasets from UCI repository and Kaggle.                                                                                                                                                             |
-| 2   | **Preprocess Data**     | `preprocess_data.py`     | Reads raw data, applies URL-based feature extraction on the Kaggle set, and returns a `DataToMerge` object.                                                                                                                 |
-| 3   | **Merge Data**          | `merge_data.py`          | Merges UCI & Kaggle datasets, removes duplicates/NaNs, and balances the class distribution.                                                                                                                                 |
-| 4   | **Feature Engineering** | `feature_engineering.py` | Adds engineered features (URL entropy, char ratios, suspicious patterns, etc.), handles `inf`/`NaN`, and saves the ML-ready dataset.                                                                                        |
-| 5   | **Model Training**      | `model_training.py`      | Trains three baseline models (Logistic Regression, Random Forest, XGBoost), evaluates each with accuracy/precision/recall/F1/ROC-AUC, generates confusion matrix & ROC plots, and saves the trained models as `.pkl` files. |
-
-### Pipeline Flow
-
-```
-extract_data → preprocess_data → merge_data → feature_engineering → model_training
+```text
+extract_data -> preprocess_data -> merge_data -> feature_engineering -> model_training
 ```
 
----
+The training pipeline:
 
-### Check Models 
+1. Downloads the UCI and Kaggle datasets.
+2. Builds URL-derived features.
+3. Merges, deduplicates, and balances the datasets.
+4. Adds additional URL, domain, path, query, entropy, and keyword features.
+5. Trains Logistic Regression, Random Forest, and XGBoost baselines.
+6. Saves each model as a bundled artifact with:
+   - the fitted estimator,
+   - the exact feature order,
+   - the URL character probability model used for inference,
+   - the label mapping.
 
-Navigate to `Models/Model_Comparison.md` for a detailed comparison of the trained models, including performance metrics, confusion matrices, ROC curves, and feature importance analyses.
+The label contract is:
 
-[View Model Comparison](Models/Model_Comparison.md)
-
----
-
-## Next Steps
-
-- [ ] **MLflow Integration** — Log parameters, metrics, and model artifacts to MLflow for experiment tracking and model comparison.
-- [ ] **Web UI** — Build a small Streamlit or FastAPI app so users can input a URL and get a safe/suspicious prediction in real time.
-- [ ] **Hyperparameter Tuning** — Use GridSearchCV / RandomizedSearchCV to optimise model performance.
-- [ ] **Model Registry** — Register the best model in MLflow for easy deployment.
-
----
-
-## Dependencies
-
-```
-pandas
-numpy
-scikit-learn
-xgboost
-tldextract
-mlflow          # (upcoming)
-streamlit       # (upcoming)
+```text
+0 = legitimate / safe
+1 = phishing / suspicious
 ```
 
----
+## Setup
+
+Create and activate a virtual environment, then install dependencies:
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+Copy `.env.example` to `.env` if you want to override data paths or dataset
+names.
+
+## Run Training
+
+```powershell
+python Pipelines\training_pipeline.py
+```
+
+Training writes generated datasets under `Data/` and model artifacts under
+`Models/`. These files can be large and should normally stay out of Git. Use
+MLflow, DVC, Git LFS, or release assets for sharing trained artifacts.
+
+## Run Inference
+
+```powershell
+python Pipelines\inference_pipeline.py
+```
+
+By default inference loads `Models/Random_Forest.pkl`. New model files are
+metadata bundles rather than raw estimator pickles, so inference can reproduce
+the training feature schema.
+
+## Tests
+
+```powershell
+pytest
+```
+
+The first tests cover the project contracts that are easiest to break:
+
+- `1` means phishing and `0` means legitimate.
+- Inference reuses the fitted URL character probability model.
+- Model artifacts can carry feature metadata.
+- Non-feature columns are dropped before prediction.
 
 ## Data Sources
 
-- [UCI — PhiUSIIL Phishing URL](https://archive.ics.uci.edu/dataset/967/phiusiil+phishing+url+dataset)
-- [Kaggle — Phishing Site URLs](https://www.kaggle.com/datasets/taruntiwarihp/phishing-site-urls)
+- [UCI PhiUSIIL Phishing URL Dataset](https://archive.ics.uci.edu/dataset/967/phiusiil+phishing+url+dataset)
+- [Kaggle Phishing Site URLs](https://www.kaggle.com/datasets/taruntiwarihp/phishing-site-urls)
+- [Kaggle Top 1M](https://www.kaggle.com/datasets/cheedcheed/top1m)
+
+## Recommended Next Steps
+
+- Add MLflow logging for params, metrics, plots, and model artifacts.
+- Promote the best model through a registry or versioned artifact store.
+- Add hyperparameter tuning after the label/feature contracts are stable.
+- Build a small Streamlit or FastAPI UI around `inference_service`.

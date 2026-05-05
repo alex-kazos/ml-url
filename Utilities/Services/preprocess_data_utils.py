@@ -1,4 +1,5 @@
 from collections import Counter
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -9,6 +10,38 @@ from Utilities.config import (
     KAGGLE_PHISHING_FILE_PATH,
     KAGGLE_TOP_SEARCHES_FILE_PATH,
 )
+
+
+@dataclass
+class URLCharacterProbabilityModel:
+    """Character-frequency scorer used consistently in training and inference."""
+
+    char_probs: dict[str, float] = field(default_factory=dict)
+    denom: int = 1
+
+    @classmethod
+    def fit(cls, urls: pd.Series) -> "URLCharacterProbabilityModel":
+        url_s = urls.astype(str)
+        all_chars = "".join(url_s.tolist())
+        char_counts = Counter(all_chars)
+        total_chars = sum(char_counts.values())
+
+        alphabet = [chr(i) for i in range(32, 127)]
+        denom = max(total_chars + len(alphabet), 1)
+        char_probs = {ch: (char_counts.get(ch, 0) + 1) / denom for ch in alphabet}
+        return cls(char_probs=char_probs, denom=denom)
+
+    def score(self, url: str) -> float:
+        s = str(url)
+        if not s:
+            return 0.0
+
+        log_p = 0.0
+        for ch in s:
+            p = self.char_probs.get(ch, 1 / self.denom)
+            log_p += float(np.log(p))
+
+        return float(np.exp(log_p / len(s)))
 
 
 def read_uci_phishing_data() -> pd.DataFrame:
@@ -210,8 +243,9 @@ def _add_char_continuation_feature(df: pd.DataFrame, url_s: pd.Series) -> pd.Dat
 
 def _add_label_and_tld_prob_features(df: pd.DataFrame) -> pd.DataFrame:
     """Add label-based features and TLD-level legitimacy probabilities."""
-    # Encode labels: assume 'good' => 1 (legitimate), everything else => 0
-    df["label_binary"] = df["Label"].apply(lambda x: 1 if x == "good" else 0)
+    # Encode labels consistently across training, metrics, and inference:
+    # 1 = phishing/suspicious, 0 = legitimate/safe.
+    df["label_binary"] = df["Label"].apply(lambda x: 1 if x == "bad" else 0)
 
     # Average legitimacy rate per TLD
     tld_legit_prob = df.groupby("TLD")["label_binary"].mean()
@@ -229,35 +263,18 @@ def _add_label_and_tld_prob_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def _add_url_char_prob_and_similarity(df: pd.DataFrame, url_s: pd.Series) -> pd.DataFrame:
     """Add `URLCharProb` and `URLSimilarityIndex` based on character frequencies."""
-    # Concatenate all URL strings to build a character frequency table
-    all_chars = "".join(url_s.tolist())
-    char_counts = Counter(all_chars)
-    total_chars = sum(char_counts.values())
+    char_model = URLCharacterProbabilityModel.fit(url_s)
+    return apply_url_char_probability_model(df, url_s, char_model)
 
-    # Simple Laplace smoothing over printable ASCII characters
-    alphabet = [chr(i) for i in range(32, 127)]
-    alpha_size = len(alphabet)
-    denom = total_chars + alpha_size
 
-    # Smoothed probability per character
-    char_probs = {ch: (char_counts.get(ch, 0) + 1) / denom for ch in alphabet}
+def apply_url_char_probability_model(
+    df: pd.DataFrame,
+    url_s: pd.Series,
+    char_model: URLCharacterProbabilityModel,
+) -> pd.DataFrame:
+    """Apply a fitted URL character probability model to a dataframe."""
 
-    def url_char_prob(u: str) -> float:
-        """Geometric mean probability of a URL under the character model."""
-        s = str(u)
-        if not s:
-            return 0.0
-        log_p = 0.0
-        for ch in s:
-            # Fall back to a uniform low probability for unseen characters
-            p = char_probs.get(ch, 1 / denom)
-            log_p += float(np.log(p))
-        avg_log = log_p / len(s)
-        # Back to (0,1]: geometric mean probability per character
-        return float(np.exp(avg_log))
-
-    # Per-URL character probability and resulting similarity index
-    df["URLCharProb"] = url_s.apply(url_char_prob)
+    df["URLCharProb"] = url_s.apply(char_model.score)
     df["URLSimilarityIndex"] = df["URLCharProb"] * 100.0
 
     return df

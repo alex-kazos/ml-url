@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
@@ -10,11 +11,11 @@ from Services.inference_service import inference_service
 
 def main() -> None:
     print("=" * 60)
-    print("  Phishing URL Detection — Inference Pipeline")
+    print("  Phishing URL Detection - Inference Pipeline")
     print("=" * 60)
 
-    # label = 1  →  suspicious / phishing
-    # label = 0  →  legitimate / safe
+    # label = 1 -> suspicious / phishing
+    # label = 0 -> legitimate / safe
     url = input("\nEnter a URL to check: ").strip()
 
     if not url:
@@ -23,7 +24,6 @@ def main() -> None:
 
     result = inference_service(url)
 
-    # Surface the key numbers cleanly for the user
     print("\n--- Summary ---")
     print(f"  URL         : {result['url']}")
     print(f"  Probability : {result['probability']:.4f}  (phishing likelihood)")

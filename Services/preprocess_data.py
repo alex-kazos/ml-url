@@ -70,7 +70,8 @@ def preprocess_data_inference_service(url:str) -> pd.DataFrame:
     """
 
     url_df = pd.DataFrame({
-        "url": [url],
+        "URL": [url],
+        "Label": ["bad"],
     })
 
     url_preprocessed = preprocess_phishing(url_df)

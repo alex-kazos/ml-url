@@ -5,6 +5,10 @@
 # Ignore pickled data and model artifacts
 *.pkl
 *.pickle
+Models/*.pkl
+Models/*_confusion_matrix.png
+Models/*_roc_curve.png
+Models/*_feature_importance.png
 models/*.joblib
 *.joblib
 

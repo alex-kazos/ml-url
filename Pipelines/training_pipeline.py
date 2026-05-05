@@ -36,7 +36,7 @@ if __name__ == "__main__":
     end_feature_engineering_time = time.time()
     print(f"Feature engineering completed in {end_feature_engineering_time - end_merge_time:.2f} seconds.")
 
-    # Step 5: Train model (to be implemented)
+    # Step 5: Train and evaluate baseline models
     model_training_service(df=ml_ready_df,test_size=0.2, random_state=42)
     end_model_training_time = time.time()
     print(f"Model training completed in {end_model_training_time - end_feature_engineering_time:.2f} seconds.")
