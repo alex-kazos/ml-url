@@ -282,7 +282,7 @@ def model_training_service(
     print(f"MLflow tracking URI: {mlflow.get_tracking_uri()}")
     print(f"MLflow registry URI: {mlflow.get_registry_uri()}")
 
-    mlflow.set_experiment("URL Detection")
+    mlflow.set_experiment("Phishing URL Detection")
 
     for name, model in models.items():
         with mlflow.start_run(run_name=name):
