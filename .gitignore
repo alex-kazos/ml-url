@@ -49,3 +49,8 @@ build/
 *.swp
 *~
 
+# MLflow tracking artifacts
+mlruns/
+**/mlruns/
+mlflow.db
+**/mlflow.db

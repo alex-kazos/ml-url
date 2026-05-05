@@ -17,3 +17,4 @@ openpyxl>=3.1.0
 python-dotenv>=1.0.0
 pytest>=8.0.0
 ruff>=0.5.0
+mlflow>=2.0.0

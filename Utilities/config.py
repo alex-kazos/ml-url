@@ -14,6 +14,11 @@ except ImportError:
 if load_dotenv is not None:
     load_dotenv()
 
+
+def _get_env(name: str, default: str) -> str:
+    value = os.getenv(name)
+    return value if value else default
+
 # Get project root directory (parent of Utilities folder)
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -22,6 +27,11 @@ DATA_ROOT = PROJECT_ROOT / os.getenv('DATA_ROOT', 'Data')
 RAW_DATA_PATH = PROJECT_ROOT / os.getenv('RAW_DATA_PATH', 'Data/raw')
 PROCESSED_DATA_PATH = PROJECT_ROOT / os.getenv('PROCESSED_DATA_PATH', 'Data/processed')
 MODELS_PATH = PROJECT_ROOT / os.getenv('MODELS_PATH', 'Models')
+
+# MLflow configuration (defaults to a project-local file store)
+DEFAULT_MLFLOW_TRACKING_URI = (PROJECT_ROOT / 'mlruns').as_uri()
+MLFLOW_TRACKING_URI = _get_env('MLFLOW_TRACKING_URI', DEFAULT_MLFLOW_TRACKING_URI)
+MLFLOW_REGISTRY_URI = _get_env('MLFLOW_REGISTRY_URI', MLFLOW_TRACKING_URI)
 
 # File names
 UCI_PHISHING_FILE = os.getenv('UCI_PHISHING_FILE', 'phishing_url_uci.pkl')
