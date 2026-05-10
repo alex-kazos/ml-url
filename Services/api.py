@@ -6,8 +6,17 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 from Services.inference_service import inference_service
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Phishing URL Detection API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class PredictRequest(BaseModel):
@@ -21,4 +30,6 @@ def health():
 
 @app.post("/predict")
 def predict(payload: PredictRequest):
-    return inference_service(payload.url)
+    return inference_service(
+        payload.url
+    )

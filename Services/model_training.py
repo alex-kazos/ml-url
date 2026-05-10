@@ -14,6 +14,7 @@ from Utilities.Services.preprocess_data_utils import (
     URLCharacterProbabilityModel,
     apply_url_char_probability_model,
 )
+from Services.inference_service import _load_reference_domains, _reference_domain_index
 
 
 warnings.filterwarnings("ignore")
@@ -190,6 +191,7 @@ def save_model(
     model: Any,
     feature_names: List[str],
     url_char_model: Optional[URLCharacterProbabilityModel] = None,
+    reference_domains: Optional[List[str]] = None,
     models_dir: Path = MODELS_PATH,
 ) -> Path:
     """Pickle the trained model with the metadata needed for inference."""
@@ -199,6 +201,8 @@ def save_model(
         "model": model,
         "feature_names": feature_names,
         "url_char_model": url_char_model,
+        "reference_domains": tuple(reference_domains or ()),
+        "reference_domain_index": _reference_domain_index(tuple(reference_domains or ())),
         "label_mapping": LABEL_MAPPING,
     }
     with open(path, "wb") as f:
@@ -257,6 +261,7 @@ def model_training_service(
         random_state,
     )
     feature_names = list(X_train.columns)
+    reference_domains = list(_load_reference_domains())
 
     models: Dict[str, Any] = {
         "Logistic Regression": LogisticRegression(
@@ -301,7 +306,14 @@ def model_training_service(
 
             mlflow.log_metrics(metrics)
 
-            model_path = save_model(name, trained, feature_names, url_char_model, models_dir)
+            model_path = save_model(
+                name,
+                trained,
+                feature_names,
+                url_char_model,
+                reference_domains,
+                models_dir,
+            )
             mlflow.log_artifact(str(model_path), artifact_path="model_bundle")
 
             safe_name = name.replace(" ", "_")
