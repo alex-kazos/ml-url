@@ -8,7 +8,7 @@ from Services.inference_service import inference_service
 
 
 def _allowed_origins() -> list[str]:
-    origins = os.getenv("API_ALLOWED_ORIGINS", "http://localhost:5173")
+    origins = os.getenv("API_ALLOWED_ORIGINS", "http://localhost:8080")
     return [origin.strip() for origin in origins.split(",") if origin.strip()]
 
 
