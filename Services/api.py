@@ -16,6 +16,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:8080",
         "http://127.0.0.1:8080",
+        "https://alexkazos.com",
         "https://www.alexkazos.com",
     ],
     allow_credentials=False,
