@@ -7,19 +7,18 @@ from pydantic import BaseModel
 from Services.inference_service import inference_service
 
 
-def _allowed_origins() -> list[str]:
-    origins = os.getenv("API_ALLOWED_ORIGINS", "http://localhost:8080")
-    return [origin.strip() for origin in origins.split(",") if origin.strip()]
-
-
 API_MODEL_NAME = os.getenv("API_MODEL_NAME", "XGBoost")
 
 app = FastAPI(title="Phishing URL Detection API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_allowed_origins(),
-    allow_credentials=True,
+    allow_origins=[
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "https://your-deployed-frontend-domain.com",
+    ],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
