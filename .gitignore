@@ -9,6 +9,7 @@ Models/*.pkl
 Models/*_confusion_matrix.png
 Models/*_roc_curve.png
 Models/*_feature_importance.png
+!Models/XGBoost.pkl
 models/*.joblib
 *.joblib
 
@@ -49,3 +50,8 @@ build/
 *.swp
 *~
 
+# MLflow tracking artifacts
+mlruns/
+**/mlruns/
+mlflow.db
+**/mlflow.db

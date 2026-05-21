@@ -5,12 +5,16 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
+import mlflow
+import mlflow.sklearn
 
-from Utilities.config import MODELS_PATH, PROCESSED_DATA_PATH
+
+from Utilities.config import MODELS_PATH, PROCESSED_DATA_PATH, MLFLOW_TRACKING_URI, MLFLOW_REGISTRY_URI
 from Utilities.Services.preprocess_data_utils import (
     URLCharacterProbabilityModel,
     apply_url_char_probability_model,
 )
+from Services.inference_service import _load_reference_domains, _reference_domain_index
 
 
 warnings.filterwarnings("ignore")
@@ -187,6 +191,7 @@ def save_model(
     model: Any,
     feature_names: List[str],
     url_char_model: Optional[URLCharacterProbabilityModel] = None,
+    reference_domains: Optional[List[str]] = None,
     models_dir: Path = MODELS_PATH,
 ) -> Path:
     """Pickle the trained model with the metadata needed for inference."""
@@ -196,6 +201,8 @@ def save_model(
         "model": model,
         "feature_names": feature_names,
         "url_char_model": url_char_model,
+        "reference_domains": tuple(reference_domains or ()),
+        "reference_domain_index": _reference_domain_index(tuple(reference_domains or ())),
         "label_mapping": LABEL_MAPPING,
     }
     with open(path, "wb") as f:
@@ -254,6 +261,7 @@ def model_training_service(
         random_state,
     )
     feature_names = list(X_train.columns)
+    reference_domains = list(_load_reference_domains())
 
     models: Dict[str, Any] = {
         "Logistic Regression": LogisticRegression(
@@ -274,14 +282,57 @@ def model_training_service(
 
     results: Dict[str, Dict[str, float]] = {}
 
-    for name, model in models.items():
-        trained = train_model(name, model, X_train, y_train)
-        metrics = evaluate(name, trained, X_test, y_test, models_dir)
-        save_model(name, trained, feature_names, url_char_model, models_dir)
-        results[name] = metrics
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_registry_uri(MLFLOW_REGISTRY_URI)
+    print(f"MLflow tracking URI: {mlflow.get_tracking_uri()}")
+    print(f"MLflow registry URI: {mlflow.get_registry_uri()}")
 
-    _print_summary(results)
-    return results
+    mlflow.set_experiment("Phishing URL Detection")
+
+    for name, model in models.items():
+        with mlflow.start_run(run_name=name):
+            mlflow.log_param("model_name", name)
+            mlflow.log_param("test_size", test_size)
+            mlflow.log_param("random_state", random_state)
+
+            params = model.get_params()
+            mlflow.log_params({
+                k: v for k, v in params.items()
+                if isinstance(v, (str, int, float, bool, type(None)))
+            })
+
+            trained = train_model(name, model, X_train, y_train)
+            metrics = evaluate(name, trained, X_test, y_test, models_dir)
+
+            mlflow.log_metrics(metrics)
+
+            model_path = save_model(
+                name,
+                trained,
+                feature_names,
+                url_char_model,
+                reference_domains,
+                models_dir,
+            )
+            mlflow.log_artifact(str(model_path), artifact_path="model_bundle")
+
+            safe_name = name.replace(" ", "_")
+            for artifact_name in [
+                f"{safe_name}_confusion_matrix.png",
+                f"{safe_name}_roc_curve.png",
+                f"{safe_name}_feature_importance.png",
+            ]:
+                artifact_path = models_dir / artifact_name
+                if artifact_path.exists():
+                    mlflow.log_artifact(str(artifact_path), artifact_path="plots")
+
+            mlflow.sklearn.log_model(
+                trained,
+                artifact_path="sklearn_model",
+                registered_model_name=name.replace(" ", "_"),
+            )
+
+            results[name] = metrics
 
 
 if __name__ == "__main__":

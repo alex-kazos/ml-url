@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: ml-url-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-api.txt
+    startCommand: uvicorn Services.api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: API_MODEL_NAME
+        value: XGBoost
+      - key: API_ALLOWED_ORIGINS
+        value: https://www.alexkazos.com
