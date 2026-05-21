@@ -1,18 +1,24 @@
-'''
-this will later be used to call the model/application from the command line, e.g. with uvicorn:
-uvicorn Services.api:app --host
-'''
+import os
+
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from Services.inference_service import inference_service
-from fastapi.middleware.cors import CORSMiddleware
+
+
+def _allowed_origins() -> list[str]:
+    origins = os.getenv("API_ALLOWED_ORIGINS", "http://localhost:5173")
+    return [origin.strip() for origin in origins.split(",") if origin.strip()]
+
+
+API_MODEL_NAME = os.getenv("API_MODEL_NAME", "XGBoost")
 
 app = FastAPI(title="Phishing URL Detection API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -25,11 +31,9 @@ class PredictRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "model": API_MODEL_NAME}
 
 
 @app.post("/predict")
 def predict(payload: PredictRequest):
-    return inference_service(
-        payload.url
-    )
+    return inference_service(payload.url, model_name=API_MODEL_NAME)

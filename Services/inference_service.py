@@ -32,7 +32,8 @@ COLUMNS_TO_DROP = [
     "label_binary",
 ]
 
-DEFAULT_MODEL_NAME = "Random_Forest"
+# chose this for performance
+DEFAULT_MODEL_NAME = "XGBoost"
 
 LEETSPEAK_TRANSLATION = str.maketrans(
     {
@@ -97,6 +98,7 @@ def _drop_non_feature_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop(columns=cols_to_drop)
 
 
+@lru_cache(maxsize=8)
 def _load_model(
     model_name: str = DEFAULT_MODEL_NAME,
     models_dir: Path = MODELS_PATH,
