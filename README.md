@@ -34,7 +34,9 @@ extract_data -> preprocess_data -> merge_data -> feature_engineering -> model_tr
 
 The training pipeline:
 
-1. Downloads the UCI and Kaggle datasets.
+1. Downloads the UCI and Kaggle datasets into `Data/raw`. If the UCI site
+   cannot be reached, the copy saved there by an earlier run is reused (with a
+   warning); the UCI dataset is a fixed snapshot, so nothing is lost.
 2. Builds URL-derived features.
 3. Merges, deduplicates, and balances the datasets.
 4. Adds additional URL, domain, path, query, entropy, and keyword features.

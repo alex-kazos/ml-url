@@ -16,17 +16,14 @@ from Services.model_training import model_training_service  # noqa: E402
 from Utilities.config import RAW_DATA_PATH  # noqa: E402
 
 # Import utility functions
-from Utilities.Services.extract_data_utils import clean_dir  # noqa: E402
 from Utilities.Services.merge_data_utils import summarise_sources  # noqa: E402
 
 
 def run_training_pipeline() -> dict:
     """Run extract -> preprocess -> merge -> features -> train, timing each stage."""
-    # Step 0: Clean raw data directory before extraction
-    clean_dir(RAW_DATA_PATH)
-
     start_extract_time = time.time()
-    # Step 1: Extract data
+    # Step 1: Extract data. Downloads overwrite the files in Data/raw; the raw
+    # folder is not wiped first, so a failed UCI download can reuse the saved copy.
     extract_data_service(RAW_DATA_PATH)
     end_extract_time = time.time()
     print(f"Data extraction completed in {end_extract_time - start_extract_time:.2f} seconds.")
