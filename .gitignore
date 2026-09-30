@@ -19,8 +19,9 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Test and notebook artifacts
+# Test, lint and notebook artifacts
 .pytest_cache/
+.ruff_cache/
 .ipynb_checkpoints/
 .ipynb_checkpoints/**
 
@@ -58,3 +59,10 @@ mlartifacts/
 **/mlartifacts/
 mlflow.db
 **/mlflow.db
+# SQLite journal/WAL files written next to mlflow.db during a run
+mlflow.db-*
+# Old file-store runs set aside when moving to mlflow.db (e.g. mlruns_old/)
+mlruns_*/
+
+# Monitoring secrets: bearer token Prometheus uses to scrape the Render /metrics
+monitoring/prometheus/metrics_token
