@@ -1,0 +1,25 @@
+# Prometheus config for the local monitoring stack (docker compose up).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - alerts.yml
+
+scrape_configs:
+  - job_name: ml-url-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8000"]
+
+  # To watch the Render deployment as well, set METRICS_TOKEN on Render, put the
+  # same token in monitoring/prometheus/metrics_token (never commit it) and
+  # uncomment this job:
+  #
+  # - job_name: ml-url-render
+  #   scheme: https
+  #   metrics_path: /metrics
+  #   authorization:
+  #     credentials_file: /etc/prometheus/metrics_token
+  #   static_configs:
+  #     - targets: ["<your-service>.onrender.com"]

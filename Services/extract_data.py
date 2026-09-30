@@ -13,7 +13,6 @@ from Utilities.config import (
 from Utilities.Services.extract_data_utils import (
     extract_uci_data,
     extract_kaggle_data,
-    clean_dir
     )
 
 
@@ -39,6 +38,6 @@ def extract_data_service(data_path=None):
 ## fetch data when this script is run directly
 if __name__ == '__main__':
 
-    clean_dir(RAW_DATA_PATH)
-
+    # Raw files are overwritten in place, not wiped first, so a failed UCI
+    # download can fall back to the saved copy.
     extract_data_service(data_path=RAW_DATA_PATH)

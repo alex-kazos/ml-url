@@ -6,15 +6,31 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 import mlflow
-import mlflow.sklearn
 
-
-from Utilities.config import MODELS_PATH, PROCESSED_DATA_PATH, MLFLOW_TRACKING_URI, MLFLOW_REGISTRY_URI
+from Utilities.config import (
+    GOLDEN_SET_MIN_ACCURACY,
+    MAX_BUNDLE_MB,
+    MLFLOW_MODEL_NAME,
+    MODELS_PATH,
+    PROCESSED_DATA_PATH,
+    PROMOTION_METRIC,
+)
 from Utilities.Services.preprocess_data_utils import (
     URLCharacterProbabilityModel,
     apply_url_char_probability_model,
 )
 from Services.inference_service import _load_reference_domains, _reference_domain_index
+from Services.model_registry import (
+    CHALLENGER_ALIAS,
+    EVAL_SET_ARTIFACT,
+    build_eval_set,
+    bundle_predictor,
+    configure_mlflow,
+    golden_set_check,
+    log_bundle_model,
+    measure_latency_ms,
+    set_alias,
+)
 
 
 warnings.filterwarnings("ignore")
@@ -186,6 +202,23 @@ def evaluate(
     return metrics
 
 
+def build_model_artifact(
+    model: Any,
+    feature_names: List[str],
+    url_char_model: Optional[URLCharacterProbabilityModel] = None,
+    reference_domains: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Everything inference needs, bundled with the fitted estimator."""
+    return {
+        "model": model,
+        "feature_names": feature_names,
+        "url_char_model": url_char_model,
+        "reference_domains": tuple(reference_domains or ()),
+        "reference_domain_index": _reference_domain_index(tuple(reference_domains or ())),
+        "label_mapping": LABEL_MAPPING,
+    }
+
+
 def save_model(
     name: str,
     model: Any,
@@ -197,14 +230,7 @@ def save_model(
     """Pickle the trained model with the metadata needed for inference."""
     safe_name = name.replace(" ", "_")
     path = models_dir / f"{safe_name}.pkl"
-    artifact = {
-        "model": model,
-        "feature_names": feature_names,
-        "url_char_model": url_char_model,
-        "reference_domains": tuple(reference_domains or ()),
-        "reference_domain_index": _reference_domain_index(tuple(reference_domains or ())),
-        "label_mapping": LABEL_MAPPING,
-    }
+    artifact = build_model_artifact(model, feature_names, url_char_model, reference_domains)
     with open(path, "wb") as f:
         pickle.dump(artifact, f)
     print(f"  Saved model -> {path}")
@@ -213,60 +239,34 @@ def save_model(
 
 def _print_summary(results: Dict[str, Dict[str, float]]) -> None:
     """Print a side-by-side comparison table."""
-    print(f"\n{'='*70}")
-    print(" MODEL COMPARISON SUMMARY")
-    print(f"{'='*70}")
-    header = f"{'Model':<25s}"
     metric_names = list(next(iter(results.values())).keys())
-    for metric_name in metric_names:
-        header += f"{metric_name:>12s}"
+    widths = [max(12, len(m) + 2) for m in metric_names]
+    header = f"{'Model':<22s}" + "".join(f"{m:>{w}s}" for m, w in zip(metric_names, widths))
+    print(f"\n{'='*len(header)}")
+    print(" MODEL COMPARISON SUMMARY")
+    print(f"{'='*len(header)}")
     print(header)
     print("-" * len(header))
     for name, metrics in results.items():
-        row = f"{name:<25s}"
-        for metric_name in metric_names:
-            row += f"{metrics.get(metric_name, 0):>12.4f}"
+        row = f"{name:<22s}" + "".join(
+            f"{metrics.get(m, 0):>{w}.4f}" for m, w in zip(metric_names, widths)
+        )
         print(row)
-    print(f"{'='*70}")
+    print(f"{'='*len(header)}")
 
 
-def model_training_service(
-    df: Optional[pd.DataFrame] = None,
-    data_path: Optional[Path] = None,
-    models_dir: Optional[Path] = None,
-    test_size: float = 0.2,
-    random_state: int = RANDOM_STATE,
-) -> Dict[str, Dict[str, float]]:
-    """Execute the complete training pipeline and return model metrics."""
+def _candidate_models(random_state: int) -> Dict[str, Any]:
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
     from xgboost import XGBClassifier
 
-    if df is not None:
-        print(f"Using provided DataFrame (shape: {df.shape})")
-    else:
-        if data_path is None:
-            data_path = PROCESSED_DATA_PATH / "ml_ready_dataset.csv"
-        df = load_data(data_path)
-
-    if models_dir is None:
-        models_dir = MODELS_PATH
-
-    models_dir = Path(models_dir)
-    models_dir.mkdir(parents=True, exist_ok=True)
-
-    X_train, X_test, y_train, y_test, url_char_model = prepare_data(
-        df,
-        test_size,
-        random_state,
-    )
-    feature_names = list(X_train.columns)
-    reference_domains = list(_load_reference_domains())
-
-    models: Dict[str, Any] = {
-        "Logistic Regression": LogisticRegression(
-            max_iter=1000,
-            random_state=random_state,
+    return {
+        # Linear models are sensitive to feature scale; the trees are not.
+        "Logistic Regression": make_pipeline(
+            StandardScaler(),
+            LogisticRegression(max_iter=1000, random_state=random_state),
         ),
         "Random Forest": RandomForestClassifier(
             n_estimators=100,
@@ -280,20 +280,70 @@ def model_training_service(
         ),
     }
 
-    results: Dict[str, Dict[str, float]] = {}
 
-    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-    mlflow.set_registry_uri(MLFLOW_REGISTRY_URI)
+def model_training_service(
+    df: Optional[pd.DataFrame] = None,
+    data_path: Optional[Path] = None,
+    models_dir: Optional[Path] = None,
+    test_size: float = 0.2,
+    random_state: int = RANDOM_STATE,
+    dataset_stats: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Dict[str, float]]:
+    """Train the candidates, log them to MLflow and register the best as challenger.
+
+    Every candidate becomes a new version of the ``MLFLOW_MODEL_NAME`` registered
+    model. The best one that passes the golden-set and bundle-size gates gets the
+    ``challenger`` alias; ``Pipelines/promotion_pipeline.py`` decides whether it
+    replaces the current champion.
+    """
+    if df is not None:
+        print(f"Using provided DataFrame (shape: {df.shape})")
+    else:
+        if data_path is None:
+            data_path = PROCESSED_DATA_PATH / "ml_ready_dataset.csv"
+        df = load_data(data_path)
+
+    if models_dir is None:
+        models_dir = MODELS_PATH
+
+    models_dir = Path(models_dir)
+    models_dir.mkdir(parents=True, exist_ok=True)
+
+    urls = df["URL"].astype(str) if "URL" in df.columns else None
+    X_train, X_test, y_train, y_test, url_char_model = prepare_data(
+        df,
+        test_size,
+        random_state,
+    )
+    feature_names = list(X_train.columns)
+    reference_domains = list(_load_reference_domains())
+
+    eval_set = None
+    latency_urls: List[str] = []
+    if urls is not None:
+        test_urls = urls.loc[X_test.index]
+        eval_set = build_eval_set(test_urls, y_test, random_state=random_state)
+        latency_urls = eval_set["url"].head(50).tolist()
+
+    client = configure_mlflow()
     print(f"MLflow tracking URI: {mlflow.get_tracking_uri()}")
     print(f"MLflow registry URI: {mlflow.get_registry_uri()}")
 
-    mlflow.set_experiment("Phishing URL Detection")
+    results: Dict[str, Dict[str, float]] = {}
+    candidates: List[Dict[str, Any]] = []
 
-    for name, model in models.items():
-        with mlflow.start_run(run_name=name):
+    for name, model in _candidate_models(random_state).items():
+        with mlflow.start_run(run_name=name) as run:
+            mlflow.set_tag("stage", "training")
+            mlflow.set_tag("algorithm", name)
             mlflow.log_param("model_name", name)
             mlflow.log_param("test_size", test_size)
             mlflow.log_param("random_state", random_state)
+            mlflow.log_param("n_features", len(feature_names))
+            mlflow.log_param("n_train", len(X_train))
+            mlflow.log_param("n_test", len(X_test))
+            if dataset_stats:
+                mlflow.log_params({f"data_{k}": v for k, v in dataset_stats.items()})
 
             params = model.get_params()
             mlflow.log_params({
@@ -301,10 +351,10 @@ def model_training_service(
                 if isinstance(v, (str, int, float, bool, type(None)))
             })
 
+            start = time.time()
             trained = train_model(name, model, X_train, y_train)
+            training_time = time.time() - start
             metrics = evaluate(name, trained, X_test, y_test, models_dir)
-
-            mlflow.log_metrics(metrics)
 
             model_path = save_model(
                 name,
@@ -314,7 +364,22 @@ def model_training_service(
                 reference_domains,
                 models_dir,
             )
-            mlflow.log_artifact(str(model_path), artifact_path="model_bundle")
+            artifact = build_model_artifact(trained, feature_names, url_char_model, reference_domains)
+            metadata = {k: v for k, v in artifact.items() if k != "model"}
+
+            # Serving-side facts: what it costs to run this model, not just to train it.
+            metrics["training_time_s"] = training_time
+            metrics["bundle_size_mb"] = model_path.stat().st_size / 1_000_000
+            if latency_urls:
+                metrics["inference_ms_p50"] = measure_latency_ms(trained, metadata, latency_urls)
+
+            golden_accuracy, golden_failures = golden_set_check(bundle_predictor(trained, metadata))
+            metrics["golden_set_accuracy"] = golden_accuracy
+            mlflow.log_metrics(metrics)
+            mlflow.log_dict({"failures": golden_failures}, "golden_set_failures.json")
+
+            if eval_set is not None:
+                mlflow.log_text(eval_set.to_csv(index=False), EVAL_SET_ARTIFACT)
 
             safe_name = name.replace(" ", "_")
             for artifact_name in [
@@ -326,13 +391,45 @@ def model_training_service(
                 if artifact_path.exists():
                     mlflow.log_artifact(str(artifact_path), artifact_path="plots")
 
-            mlflow.sklearn.log_model(
-                trained,
-                artifact_path="sklearn_model",
-                registered_model_name=name.replace(" ", "_"),
+            info = log_bundle_model(model_path, trained, metadata, algorithm=name)
+            print(
+                f"  Registered {MLFLOW_MODEL_NAME} v{info.registered_model_version} "
+                f"(run {run.info.run_id})"
             )
 
             results[name] = metrics
+            candidates.append(
+                {"name": name, "version": info.registered_model_version, "metrics": metrics}
+            )
+
+    _print_summary(results)
+
+    eligible = [
+        c for c in candidates
+        if c["metrics"]["golden_set_accuracy"] >= GOLDEN_SET_MIN_ACCURACY
+        and c["metrics"]["bundle_size_mb"] <= MAX_BUNDLE_MB
+    ]
+    for c in candidates:
+        if c not in eligible:
+            print(
+                f"  Not eligible: {c['name']} (golden set "
+                f"{c['metrics']['golden_set_accuracy']:.2f}, "
+                f"bundle {c['metrics']['bundle_size_mb']:.1f} MB)"
+            )
+
+    if eligible:
+        best = max(eligible, key=lambda c: c["metrics"][PROMOTION_METRIC])
+        set_alias(CHALLENGER_ALIAS, best["version"])
+        client.set_model_version_tag(MLFLOW_MODEL_NAME, best["version"], "role", "challenger")
+        print(
+            f"\nChallenger: {best['name']} -> {MLFLOW_MODEL_NAME} v{best['version']} "
+            f"({PROMOTION_METRIC} {best['metrics'][PROMOTION_METRIC]:.4f})"
+        )
+        print("Run Pipelines/promotion_pipeline.py to compare it with the champion.")
+    else:
+        print("\nNo candidate passed the golden-set and size gates; no challenger set.")
+
+    return results
 
 
 if __name__ == "__main__":

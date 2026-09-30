@@ -1,0 +1,18 @@
+{
+  "registered_model": "ml-url",
+  "version": "9",
+  "algorithm": "XGBoost",
+  "run_id": "7db8caaaee1842d0a17d8d3cf0988d7d",
+  "metrics": {
+    "Accuracy": 0.8684,
+    "F1-Score": 0.8616,
+    "Precision": 0.9083,
+    "ROC-AUC": 0.9438,
+    "Recall": 0.8194,
+    "bundle_size_mb": 8.6178,
+    "golden_set_accuracy": 0.9375,
+    "inference_ms_p50": 71.7462,
+    "training_time_s": 3.9681
+  },
+  "exported_at": "2026-09-30T16:52:12+00:00"
+}

@@ -28,10 +28,29 @@ RAW_DATA_PATH = PROJECT_ROOT / os.getenv('RAW_DATA_PATH', 'Data/raw')
 PROCESSED_DATA_PATH = PROJECT_ROOT / os.getenv('PROCESSED_DATA_PATH', 'Data/processed')
 MODELS_PATH = PROJECT_ROOT / os.getenv('MODELS_PATH', 'Models')
 
-# MLflow configuration (defaults to a project-local file store)
-DEFAULT_MLFLOW_TRACKING_URI = (PROJECT_ROOT / 'mlruns').as_uri()
+# MLflow configuration.
+# Defaults to a project-local SQLite database: recent MLflow releases refuse the
+# old ./mlruns file store, and the model registry needs a database backend anyway.
+DEFAULT_MLFLOW_TRACKING_URI = f"sqlite:///{(PROJECT_ROOT / 'mlflow.db').as_posix()}"
 MLFLOW_TRACKING_URI = _get_env('MLFLOW_TRACKING_URI', DEFAULT_MLFLOW_TRACKING_URI)
 MLFLOW_REGISTRY_URI = _get_env('MLFLOW_REGISTRY_URI', MLFLOW_TRACKING_URI)
+MLFLOW_EXPERIMENT_NAME = _get_env('MLFLOW_EXPERIMENT_NAME', 'Phishing URL Detection')
+MLFLOW_MODEL_NAME = _get_env('MLFLOW_MODEL_NAME', 'ml-url')
+
+# Model promotion (champion / challenger) settings
+PROMOTION_METRIC = _get_env('PROMOTION_METRIC', 'F1-Score')
+PROMOTION_MIN_IMPROVEMENT = float(_get_env('PROMOTION_MIN_IMPROVEMENT', '0.002'))
+PROMOTION_RECALL_TOLERANCE = float(_get_env('PROMOTION_RECALL_TOLERANCE', '0.005'))
+# Render's free tier has 512 MB of RAM, so keep the served bundle well below that.
+MAX_BUNDLE_MB = float(_get_env('MAX_BUNDLE_MB', '50'))
+EVAL_SAMPLE_SIZE = int(_get_env('EVAL_SAMPLE_SIZE', '2000'))
+
+# Golden set: hand-picked URLs every served model must mostly get right
+GOLDEN_SET_PATH = PROJECT_ROOT / os.getenv('GOLDEN_SET_PATH', 'Models/golden_set.csv')
+GOLDEN_SET_MIN_ACCURACY = float(_get_env('GOLDEN_SET_MIN_ACCURACY', '0.75'))
+
+# Name of the exported champion bundle in Models/ (served when API_MODEL_NAME=champion)
+CHAMPION_FILE_STEM = _get_env('CHAMPION_FILE_STEM', 'champion')
 
 # File names
 UCI_PHISHING_FILE = os.getenv('UCI_PHISHING_FILE', 'phishing_url_uci.pkl')
