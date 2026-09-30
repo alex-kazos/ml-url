@@ -1,6 +1,27 @@
 
 import pandas as pd
 
+from Utilities.Services.preprocess_data_utils import preprocess_phishing
+
+
+def normalise_uci(df: pd.DataFrame) -> pd.DataFrame:
+    """Bring the UCI dataset into the Kaggle schema.
+
+    UCI ships a lowercase ``label`` where 1 = legitimate and 0 = phishing, and
+    its own page-level features that cannot be computed from a URL at
+    inference time. Keep only the URL, map the label to Kaggle's "good"/"bad",
+    and derive the URL features the same way as for Kaggle rows.
+    """
+    if "Label" in df.columns:
+        return df
+    uci = pd.DataFrame(
+        {
+            "URL": df["URL"].astype(str),
+            "Label": df["label"].map({1: "good", 0: "bad"}),
+        }
+    ).dropna(subset=["Label"])
+    return preprocess_phishing(uci)
+
 
 def keep_common_columns(df: pd.DataFrame, common_cols: list) -> pd.DataFrame:
     """

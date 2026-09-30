@@ -1,6 +1,5 @@
 """Contracts for the MLOps layer: promotion gates, data-source checks, golden set."""
 import pandas as pd
-import pytest
 
 from Classes.DataToMerge import DataToMerge
 from Services.merge_data import merge_data_service
@@ -76,13 +75,8 @@ def test_summarise_sources_counts_rows_per_source():
     }
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="UCI ships a lowercase 'label' (1 = legitimate). keep_common_columns fills the "
-    "missing 'Label' with 0, so balance_dataset drops every UCI row. Remove this marker "
-    "once the UCI labels are mapped to 'good'/'bad'.",
-)
 def test_merge_keeps_rows_from_both_sources():
+    # UCI ships a lowercase 'label' where 1 = legitimate, the opposite of label_binary.
     uci = pd.DataFrame(
         {
             "URL": ["https://www.uci-legit.example", "http://uci-phish.example/login"],
@@ -101,7 +95,10 @@ def test_merge_keeps_rows_from_both_sources():
     merged = merge_data_service(DataToMerge(urls_uci=uci, urls_kaggle=kaggle))
     stats = summarise_sources(uci, kaggle, merged)
 
-    assert stats["rows_from_uci"] > 0
+    assert stats["rows_from_uci"] == 2
+    labels = merged.set_index("URL")["label_binary"]
+    assert labels["https://www.uci-legit.example"] == 0
+    assert labels["http://uci-phish.example/login"] == 1
 
 
 def test_golden_set_is_well_formed():

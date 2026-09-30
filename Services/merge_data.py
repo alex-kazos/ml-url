@@ -10,7 +10,7 @@ from Utilities.Services.preprocess_data_utils import (
 # Import utility functions
 from Utilities.Services.merge_data_utils import (
     remove_duplicates_and_nan,
-    balance_dataset, keep_common_columns,
+    balance_dataset, keep_common_columns, normalise_uci,
 )
 from Services.preprocess_data import preprocess_data_service
 
@@ -42,7 +42,8 @@ def merge_data_service(dataToMerge:DataToMerge=None,pkl_path:Path=None)->pd.Data
         urls_uci = dataToMerge.urls_uci
         urls_kaggle = dataToMerge.urls_kaggle
 
-    # Prepare UCI dataset
+    # Prepare UCI dataset: map its labels and URL features to the Kaggle schema
+    urls_uci = normalise_uci(urls_uci)
     common_columns = urls_kaggle.columns.tolist()
     urls_uci = keep_common_columns(urls_uci, common_columns)
     # Merge the datasets
