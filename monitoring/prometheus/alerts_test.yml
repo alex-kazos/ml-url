@@ -1,0 +1,65 @@
+# Unit tests for alerts.yml. Run from this folder:
+#   promtool test rules alerts_test.yml
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Normal traffic for 6 hours (10% phishing), then an attack wave (50% phishing).
+  - interval: 1m
+    input_series:
+      - series: 'mlurl_predictions_total{verdict="legitimate"}'
+        values: '0+9x420'
+      - series: 'mlurl_predictions_total{verdict="phishing"}'
+        values: '0+1x360 361+9x60'
+    alert_rule_test:
+      - eval_time: 300m
+        alertname: MlUrlPhishingShareSpike
+        exp_alerts: []
+      - eval_time: 380m
+        alertname: MlUrlPhishingShareSpike
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: The share of phishing verdicts doubled versus the 6-hour baseline.
+              description: Either an attack wave or drift. Check the input panels before retraining.
+
+  # The lookalike rule starts overriding the model on 40% of requests.
+  - interval: 1m
+    input_series:
+      - series: 'mlurl_predictions_total{verdict="phishing"}'
+        values: '0+5x120'
+      - series: 'mlurl_lookalike_overrides_total'
+        values: '0+0x60 0+2x60'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: MlUrlLookalikeOverridesHigh
+        exp_alerts: []
+      - eval_time: 120m
+        alertname: MlUrlLookalikeOverridesHigh
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: The lookalike rule overrides the model on more than 20% of requests.
+              description: The model is missing impersonation patterns that the rule catches.
+
+  # The API stops answering scrapes.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="ml-url-api"}'
+        values: '1x10 0x10'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: MlUrlApiDown
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: MlUrlApiDown
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              job: ml-url-api
+            exp_annotations:
+              summary: The ml-url API is down or Prometheus cannot scrape it.
