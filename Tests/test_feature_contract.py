@@ -149,10 +149,13 @@ def test_domain_impersonation_signals_allow_exact_brand_label():
 
 
 def test_reference_domain_candidates_only_use_near_length_buckets():
+    # "yootubeyootube" shares every bigram with "yootube", so it passes the
+    # bigram-similarity filter. It must still be excluded because its length
+    # is more than two characters away from the input.
     index = _reference_domain_index(
         (
             "youtube.com",
-            "example.com",
+            "yootubeyootube.com",
             "verylongreference.com",
             "tiny.io",
         )
@@ -160,10 +163,7 @@ def test_reference_domain_candidates_only_use_near_length_buckets():
 
     candidates = _reference_domain_candidates("yootube", index)
 
-    assert candidates == {
-        "youtube": "youtube.com",
-        "example": "example.com",
-    }
+    assert candidates == {"youtube": "youtube.com"}
 
 
 def test_reference_domain_candidates_use_bigram_similarity():
