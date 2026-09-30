@@ -358,6 +358,78 @@ def _domain_impersonation_signals(
     return signals
 
 
+def predict_with_bundle(
+    url: str,
+    model: Any,
+    metadata: Dict[str, Any],
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Predict a single URL with an already-loaded model bundle.
+
+    This is the one prediction path shared by the CLI, the FastAPI service and
+    the MLflow pyfunc wrapper, so every consumer gets identical behaviour.
+
+    Returns
+    -------
+    tuple
+        ``(result, details)``: ``result`` is the public response and
+        ``details`` holds internals that monitoring needs (the raw model label,
+        whether the lookalike check overrode it, feature counts).
+    """
+    feature_df = _preprocess_url_for_inference(
+        url,
+        char_model=metadata.get("url_char_model"),
+    )
+
+    X = _drop_non_feature_columns(feature_df)
+    feature_names = metadata.get("feature_names")
+    if feature_names is not None:
+        X = X.reindex(columns=feature_names, fill_value=0)
+    elif hasattr(model, "feature_names_in_"):
+        X = X.reindex(columns=model.feature_names_in_, fill_value=0)
+
+    model_label = int(model.predict(X)[0])
+    label = model_label
+    phishing_probability = _phishing_probability(model, X)
+    risk_signals = _domain_impersonation_signals(
+        url,
+        reference_index=_reference_index_from_metadata(metadata),
+    )
+    overridden = False
+    if risk_signals and label == 0:
+        label = 1
+        phishing_probability = max(phishing_probability, 0.85)
+        overridden = True
+
+    verdict = "[!] SUSPICIOUS / PHISHING" if label == 1 else "[OK] LEGITIMATE"
+
+    result = {
+        "url": url,
+        "label": label,
+        "probability": round(phishing_probability, 4),
+        "verdict": verdict,
+    }
+    if risk_signals:
+        result["risk_signals"] = risk_signals
+
+    details = {
+        "model_label": model_label,
+        "overridden": overridden,
+        "raw_feature_columns": feature_df.shape[1],
+        "model_feature_columns": X.shape[1],
+    }
+    return result, details
+
+
+def predict_url(
+    url: str,
+    model_name: str = DEFAULT_MODEL_NAME,
+    models_dir: Path = MODELS_PATH,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Quiet single-URL prediction for services (no console output)."""
+    model, metadata = _load_model(model_name, models_dir)
+    return predict_with_bundle(url, model, metadata)
+
+
 def inference_service(
     url: str,
     model_name: str = DEFAULT_MODEL_NAME,
@@ -376,41 +448,15 @@ def inference_service(
     model, metadata = _load_model(model_name, models_dir)
 
     print("\n[2/3] Preprocessing & feature engineering ...")
-    feature_df = _preprocess_url_for_inference(
-        url,
-        char_model=metadata.get("url_char_model"),
-    )
-    print(f"       Generated {feature_df.shape[1]} raw feature columns.")
-
-    X = _drop_non_feature_columns(feature_df)
-    feature_names = metadata.get("feature_names")
-    if feature_names is not None:
-        X = X.reindex(columns=feature_names, fill_value=0)
-    elif hasattr(model, "feature_names_in_"):
-        X = X.reindex(columns=model.feature_names_in_, fill_value=0)
-    print(f"       Using {X.shape[1]} features for prediction.")
+    result, details = predict_with_bundle(url, model, metadata)
+    print(f"       Generated {details['raw_feature_columns']} raw feature columns.")
+    print(f"       Using {details['model_feature_columns']} features for prediction.")
 
     print("\n[3/3] Predicting ...")
-    label = int(model.predict(X)[0])
-    phishing_probability = _phishing_probability(model, X)
-    risk_signals = _domain_impersonation_signals(
-        url,
-        reference_index=_reference_index_from_metadata(metadata),
-    )
-    if risk_signals and label == 0:
-        label = 1
-        phishing_probability = max(phishing_probability, 0.85)
-
-    verdict = "[!] SUSPICIOUS / PHISHING" if label == 1 else "[OK] LEGITIMATE"
-
-    result = {
-        "url": url,
-        "label": label,
-        "probability": round(phishing_probability, 4),
-        "verdict": verdict,
-    }
-    if risk_signals:
-        result["risk_signals"] = risk_signals
+    label = result["label"]
+    phishing_probability = result["probability"]
+    risk_signals = result.get("risk_signals", [])
+    verdict = result["verdict"]
 
     print("\n  Result:")
     print(f"    URL         : {url}")

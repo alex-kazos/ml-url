@@ -1,0 +1,24 @@
+# Golden set: URLs every served model should mostly get right (see GOLDEN_SET_MIN_ACCURACY).
+# label: 1 = phishing / suspicious, 0 = legitimate / safe
+# Rows 1-5: first "bad" rows of the Kaggle Phishing Site URLs dataset.
+# Rows 6-8: hand-picked phishing patterns (lookalike, brand in subdomain, free TLD).
+# Rows 9-13: first rows of the UCI PhiUSIIL dataset (label = legitimate).
+# Rows 14-16: well-known legitimate URLs typed the way people paste them.
+# Note: lines starting with '#' are comments, so don't add URLs containing '#'.
+url,label
+nobell.it/70ffb52d079109dca5664cce6f317373782/login.SkyPe.com/en/cgi-bin/verification/login/70ffb52d079109dca5664cce6f317373/index.php?cmd=_profile-ach&outdated_page_tmpl=p/gen/failed-to-load&nav=0.5.1&login_access=1322408526,1
+www.dghjdgf.com/paypal.co.uk/cycgi-bin/webscrcmd=_home-customer&nav=1/loading.php,1
+serviciosbys.com/paypal.cgi.bin.get-into.herf.secure.dispatch35463256rzr321654641dsf654321874/href/href/href/secure/center/update/limit/seccure/4d7a1ff5c55825a2e632a679c2fd5353/,1
+mail.printakid.com/www.online.americanexpress.com/index.html,1
+thewhiskeydregs.com/wp-content/themes/widescreen/includes/temp/promocoessmiles/?84784787824HDJNDJDSJSHD//2724782784/,1
+paypa1.com,1
+paypal.com.account-verify.xyz/login.php,1
+secure-login.verify-account.tk/update/confirm?id=123,1
+https://www.southbankmosaics.com,0
+https://www.uni-mainz.de,0
+https://www.voicefmradio.co.uk,0
+https://www.sfnmjournal.com,0
+https://www.rewildingargentina.org,0
+google.com,0
+en.wikipedia.org/wiki/Phishing,0
+github.com/alex-kazos/ml-url,0

@@ -34,3 +34,25 @@ def balance_dataset(df: pd.DataFrame) -> pd.DataFrame:
 
     balanced_df = pd.concat([phishing_df, safe_df], ignore_index=True)
     return balanced_df
+
+
+def summarise_sources(
+    urls_uci: pd.DataFrame,
+    urls_kaggle: pd.DataFrame,
+    merged_df: pd.DataFrame,
+) -> dict:
+    """Count how many rows each source contributes before and after merging.
+
+    Logged to MLflow with every training run, so a source that silently drops
+    out of the training data shows up as a zero instead of going unnoticed.
+    """
+    merged_urls = merged_df["URL"].astype(str)
+    uci_urls = set(urls_uci["URL"].astype(str)) if "URL" in urls_uci else set()
+    kaggle_urls = set(urls_kaggle["URL"].astype(str)) if "URL" in urls_kaggle else set()
+    return {
+        "rows_uci_raw": int(len(urls_uci)),
+        "rows_kaggle_raw": int(len(urls_kaggle)),
+        "rows_after_merge": int(len(merged_df)),
+        "rows_from_uci": int(merged_urls.isin(uci_urls).sum()),
+        "rows_from_kaggle": int(merged_urls.isin(kaggle_urls).sum()),
+    }
