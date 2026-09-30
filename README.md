@@ -182,8 +182,8 @@ The first tests cover the project contracts that are easiest to break:
 - Promotion gates, per-source row counts and the `/metrics` endpoint behave.
 - `Tests/test_model_smoke.py` runs the golden set against the model file the
   API serves, so a mislabelled or stale model fails before it reaches users.
-- An `xfail` test documents that UCI rows are currently dropped during the
-  merge (UCI uses a lowercase `label` column where 1 = legitimate).
+- Rows from both UCI and Kaggle survive the merge with correctly mapped labels
+  (UCI uses a lowercase `label` column where 1 = legitimate).
 
 ## Data Sources
 
@@ -193,10 +193,9 @@ The first tests cover the project contracts that are easiest to break:
 
 ## Recommended Next Steps
 
-- Map the UCI `label` column (1 = legitimate) to `Label` good/bad so UCI rows
-  survive the merge, and compute their features from the URL like Kaggle rows.
-- Normalise URLs the same way in training and inference: the Kaggle URLs have
-  no scheme, so the same URL can score differently when users type `https://`.
+- Normalise URLs the same way in training and inference: UCI URLs carry a
+  scheme and Kaggle URLs do not, so the model learns the scheme as a signal
+  (`google.com` scores as phishing while `https://www.google.com` does not).
 - Add hyperparameter tuning now that label, feature and promotion contracts
   are in place.
 - Add host-based signals (domain age, certificate details) for URLs where the
