@@ -97,8 +97,8 @@ def test_merge_keeps_rows_from_both_sources():
 
     assert stats["rows_from_uci"] == 2
     labels = merged.set_index("URL")["label_binary"]
-    assert labels["https://www.uci-legit.example"] == 0
-    assert labels["http://uci-phish.example/login"] == 1
+    assert labels["uci-legit.example"] == 0
+    assert labels["uci-phish.example/login"] == 1
 
 
 def test_golden_set_is_well_formed():

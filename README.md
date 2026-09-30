@@ -184,6 +184,11 @@ The first tests cover the project contracts that are easiest to break:
   API serves, so a mislabelled or stale model fails before it reaches users.
 - Rows from both UCI and Kaggle survive the merge with correctly mapped labels
   (UCI uses a lowercase `label` column where 1 = legitimate).
+- URLs are normalised (scheme, leading `www.` and trailing `/` removed) before
+  any feature is computed, in training and inference alike, so `google.com`
+  and `https://www.google.com` get identical features. UCI writes URLs with a
+  scheme and Kaggle mostly without, so otherwise the model learns the dataset's
+  formatting instead of phishing patterns.
 
 ## Data Sources
 
@@ -193,9 +198,6 @@ The first tests cover the project contracts that are easiest to break:
 
 ## Recommended Next Steps
 
-- Normalise URLs the same way in training and inference: UCI URLs carry a
-  scheme and Kaggle URLs do not, so the model learns the scheme as a signal
-  (`google.com` scores as phishing while `https://www.google.com` does not).
 - Add hyperparameter tuning now that label, feature and promotion contracts
   are in place.
 - Add host-based signals (domain age, certificate details) for URLs where the

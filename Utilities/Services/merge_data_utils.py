@@ -1,7 +1,7 @@
 
 import pandas as pd
 
-from Utilities.Services.preprocess_data_utils import preprocess_phishing
+from Utilities.Services.preprocess_data_utils import normalise_url, preprocess_phishing
 
 
 def normalise_uci(df: pd.DataFrame) -> pd.DataFrame:
@@ -67,9 +67,12 @@ def summarise_sources(
     Logged to MLflow with every training run, so a source that silently drops
     out of the training data shows up as a zero instead of going unnoticed.
     """
-    merged_urls = merged_df["URL"].astype(str)
-    uci_urls = set(urls_uci["URL"].astype(str)) if "URL" in urls_uci else set()
-    kaggle_urls = set(urls_kaggle["URL"].astype(str)) if "URL" in urls_kaggle else set()
+    def _urls(df: pd.DataFrame) -> pd.Series:
+        return df["URL"].astype(str).map(normalise_url) if "URL" in df else pd.Series(dtype=str)
+
+    merged_urls = _urls(merged_df)
+    uci_urls = set(_urls(urls_uci))
+    kaggle_urls = set(_urls(urls_kaggle))
     return {
         "rows_uci_raw": int(len(urls_uci)),
         "rows_kaggle_raw": int(len(urls_kaggle)),

@@ -1,3 +1,4 @@
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -10,6 +11,25 @@ from Utilities.config import (
     KAGGLE_PHISHING_FILE_PATH,
     KAGGLE_TOP_SEARCHES_FILE_PATH,
 )
+
+_SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]*://", re.IGNORECASE)
+_WWW_RE = re.compile(r"^www\d*\.", re.IGNORECASE)
+_HOST_END_RE = re.compile(r"[/?#]")
+
+
+def normalise_url(url: str) -> str:
+    """Put a URL in one canonical form before any feature is computed.
+
+    UCI URLs carry a scheme and "www." while Kaggle URLs mostly do not, so
+    without this the model learns how a dataset writes URLs instead of what
+    makes them phishing (e.g. "google.com" vs "https://www.google.com").
+    Strips surrounding whitespace, the scheme, a leading "www." and trailing
+    slashes; the rest of the URL is kept as is.
+    """
+    s = str(url).strip()
+    s = _SCHEME_RE.sub("", s)
+    s = _WWW_RE.sub("", s)
+    return s.rstrip("/")
 
 
 @dataclass
@@ -113,26 +133,21 @@ def _char_continuation_rate(u: str) -> float:
 
 
 def _add_basic_url_parts(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
-    """Add basic URL-derived columns (length, domain, protocol, etc.).
+    """Add basic URL-derived columns (length, domain, etc.).
 
+    Normalises the URL column in place (see :func:`normalise_url`), so every
+    later feature, the character model and deduplication see the same form.
     Returns the mutated dataframe together with frequently reused
     `url_s` (stringified URLs) and `lower_url` (lower-cased URLs).
     """
-    # Work on a string view of the URL column so we can reuse it
-    url_s = df["URL"].astype(str)
+    df["URL"] = df["URL"].astype(str).map(normalise_url)
+    url_s = df["URL"]
 
     # Total character length of each URL
     df["URLLength"] = url_s.apply(len)
 
-    # Crude domain extraction: take the 3rd slash-separated component if present
-    df["Domain"] = url_s.apply(
-        lambda x: x.split("/")[2] if len(x.split("/")) > 2 else ""
-    )
-
-    # HTTPS flag based on scheme prefix
-    df["IsHTTPS"] = url_s.apply(
-        lambda x: 1 if x.startswith("https://") else 0
-    )
+    # Host part: everything before the first path, query or fragment separator
+    df["Domain"] = url_s.apply(lambda x: _HOST_END_RE.split(x, maxsplit=1)[0])
 
     # Lower-cased URLs reused for keyword-based features
     lower_url = url_s.str.lower()

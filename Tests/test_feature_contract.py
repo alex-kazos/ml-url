@@ -16,6 +16,7 @@ from Services.model_training import prepare_data
 from Utilities.Services.preprocess_data_utils import (
     URLCharacterProbabilityModel,
     _add_label_and_tld_prob_features,
+    normalise_url,
 )
 
 
@@ -61,8 +62,25 @@ def test_inference_reuses_training_url_character_model():
         char_model=char_model,
     )
 
-    assert feature_df.loc[0, "URLCharProb"] == char_model.score("http://bad.example/login")
+    assert feature_df.loc[0, "URLCharProb"] == char_model.score("bad.example/login")
     assert feature_df.loc[0, "URLSimilarityIndex"] == feature_df.loc[0, "URLCharProb"] * 100
+
+
+def test_normalise_url_strips_scheme_www_and_trailing_slash():
+    assert normalise_url("  HTTPS://www.Example.com/path/  ") == "Example.com/path"
+    assert normalise_url("http://www2.example.com/") == "example.com"
+    assert normalise_url("example.com/a?b=c") == "example.com/a?b=c"
+    assert normalise_url("wwwexample.com") == "wwwexample.com"
+
+
+def test_scheme_and_www_do_not_change_features():
+    # The model must not see how a URL was typed, only what it points to.
+    forms = ["google.com", "www.google.com", "https://www.google.com", "http://google.com/"]
+    features = [_preprocess_url_for_inference(u).drop(columns=["URL"]) for u in forms]
+
+    for other in features[1:]:
+        pd.testing.assert_frame_equal(features[0], other)
+    assert features[0].loc[0, "Domain"] == "google.com"
 
 
 def test_prepare_data_returns_feature_metadata():
