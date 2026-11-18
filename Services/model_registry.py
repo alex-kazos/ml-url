@@ -36,6 +36,7 @@ from Utilities.config import (
     EVAL_SAMPLE_SIZE,
     GOLDEN_SET_MIN_ACCURACY,
     GOLDEN_SET_PATH,
+    HOLDOUT_SET_PATH,
     MAX_BUNDLE_MB,
     MLFLOW_EXPERIMENT_NAME,
     MLFLOW_MODEL_NAME,
@@ -45,6 +46,7 @@ from Utilities.config import (
     PROJECT_ROOT,
     PROMOTION_METRIC,
     PROMOTION_MIN_IMPROVEMENT,
+    PROMOTION_MIN_PRECISION,
     PROMOTION_RECALL_TOLERANCE,
 )
 
@@ -53,11 +55,13 @@ CHALLENGER_ALIAS = "challenger"
 EVAL_SET_ARTIFACT = "eval/eval_set.csv"
 PYFUNC_MODEL_PATH = PROJECT_ROOT / "Services" / "pyfunc_model.py"
 CODE_PATHS = [str(PROJECT_ROOT / name) for name in ("Services", "Utilities", "Classes")]
+# Pinned like requirements-api.txt: the bundle is a pickle and only loads
+# reliably with the library versions that wrote it.
 SERVING_REQUIREMENTS = [
-    "pandas>=2.0.0",
-    "numpy>=1.24.0",
-    "scikit-learn>=1.3.0",
-    "xgboost>=2.0.0",
+    "pandas==2.3.3",
+    "numpy==2.4.2",
+    "scikit-learn==1.8.0",
+    "xgboost==3.2.0",
 ]
 
 
@@ -92,6 +96,15 @@ def load_golden_set(path: Path = GOLDEN_SET_PATH) -> pd.DataFrame:
     """Hand-picked URLs with known labels (1 = phishing, 0 = legitimate)."""
     golden = pd.read_csv(path, comment="#")
     return golden[["url", "label"]].astype({"url": str, "label": int})
+
+
+def load_holdout_set(path: Path = HOLDOUT_SET_PATH) -> Optional[pd.DataFrame]:
+    """The frozen champion-vs-challenger evaluation set, or None if there is none."""
+    path = Path(path)
+    if not path.exists():
+        return None
+    holdout = pd.read_csv(path)
+    return holdout[["url", "label"]].astype({"url": str, "label": int})
 
 
 def golden_set_check(
@@ -244,6 +257,23 @@ class PromotionCriteria:
     recall_tolerance: float = PROMOTION_RECALL_TOLERANCE
     max_bundle_mb: float = MAX_BUNDLE_MB
     golden_min_accuracy: float = GOLDEN_SET_MIN_ACCURACY
+    min_precision: float = PROMOTION_MIN_PRECISION
+
+
+def quality_gate_failures(
+    metrics: Dict[str, float],
+    criteria: PromotionCriteria = PromotionCriteria(),
+) -> List[str]:
+    """Absolute gates every served model must pass: golden set and precision floor."""
+    failures: List[str] = []
+    if metrics["golden_set_accuracy"] < criteria.golden_min_accuracy:
+        failures.append(
+            f"golden set accuracy {metrics['golden_set_accuracy']:.2f} "
+            f"< {criteria.golden_min_accuracy:.2f}"
+        )
+    if metrics["Precision"] < criteria.min_precision:
+        failures.append(f"precision {metrics['Precision']:.3f} < {criteria.min_precision:.2f}")
+    return failures
 
 
 def promotion_decision(
@@ -255,14 +285,13 @@ def promotion_decision(
 
     Both dicts hold metrics measured on the *same* evaluation set, plus
     ``golden_set_accuracy`` and ``bundle_size_mb``. Returns (promote, reasons).
-    """
-    reasons: List[str] = []
 
-    if challenger["golden_set_accuracy"] < criteria.golden_min_accuracy:
-        reasons.append(
-            f"golden set accuracy {challenger['golden_set_accuracy']:.2f} "
-            f"< {criteria.golden_min_accuracy:.2f}"
-        )
+    The challenger must pass the absolute gates (golden set, precision floor,
+    bundle size). If the champion fails its own golden-set or precision gate,
+    any challenger that passes them replaces it; otherwise the challenger also
+    has to beat the champion on ``criteria.metric`` without losing recall.
+    """
+    reasons = quality_gate_failures(challenger, criteria)
     if challenger["bundle_size_mb"] > criteria.max_bundle_mb:
         reasons.append(
             f"bundle {challenger['bundle_size_mb']:.1f} MB > {criteria.max_bundle_mb:.0f} MB limit"
@@ -272,6 +301,15 @@ def promotion_decision(
         if reasons:
             return False, reasons
         return True, ["no current champion and the challenger passes every gate"]
+
+    champion_failures = quality_gate_failures(champion, criteria)
+    if champion_failures:
+        if reasons:
+            return False, reasons
+        return True, [
+            f"the champion fails its own gates ({'; '.join(champion_failures)}) "
+            "and the challenger passes every gate"
+        ]
 
     gain = challenger[criteria.metric] - champion[criteria.metric]
     if gain < criteria.min_improvement:
@@ -320,11 +358,18 @@ def promote_challenger(criteria: PromotionCriteria = PromotionCriteria()) -> Dic
         return {"promoted": False, "reasons": ["challenger is already champion"],
                 "challenger_version": challenger.version, "champion_version": champion.version}
 
-    eval_path = mlflow.artifacts.download_artifacts(
-        run_id=challenger.run_id, artifact_path=EVAL_SET_ARTIFACT
-    )
-    eval_df = pd.read_csv(eval_path)
-    print(f"Evaluation set: {len(eval_df):,} held-out URLs from run {challenger.run_id}")
+    eval_df = load_holdout_set()
+    eval_source = "holdout" if eval_df is not None else "challenger test split"
+    if eval_df is not None:
+        print(f"Evaluation set: {len(eval_df):,} URLs from the frozen holdout {HOLDOUT_SET_PATH.name}")
+    else:
+        # No frozen holdout: fall back to the challenger's own test-split sample,
+        # which the champion may have trained on.
+        eval_path = mlflow.artifacts.download_artifacts(
+            run_id=challenger.run_id, artifact_path=EVAL_SET_ARTIFACT
+        )
+        eval_df = pd.read_csv(eval_path)
+        print(f"Evaluation set: {len(eval_df):,} held-out URLs from run {challenger.run_id}")
 
     print(f"Scoring challenger v{challenger.version} ...")
     challenger_metrics = score_version(challenger, eval_df)
@@ -342,6 +387,8 @@ def promote_challenger(criteria: PromotionCriteria = PromotionCriteria()) -> Dic
                 "challenger_version": challenger.version,
                 "champion_version": champion.version if champion else "none",
                 "decision": "promote" if promote else "keep",
+                "eval_set": eval_source,
+                "eval_set_size": len(eval_df),
                 **{f"criteria_{k}": v for k, v in asdict(criteria).items()},
             }
         )

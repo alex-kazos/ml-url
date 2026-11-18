@@ -6,6 +6,8 @@ from urllib.parse import urlparse
 import numpy as np
 import pandas as pd
 
+from Utilities.Services.url_utils import split_registered_domain
+
 
 SUSPICIOUS_TLDS = frozenset({
     "tk", "ml", "ga", "cf", "gq", "xyz", "top", "buzz", "club",
@@ -25,6 +27,11 @@ BRAND_NAMES = [
     "netflix", "ebay", "chase", "wells", "citi", "instagram",
     "linkedin", "twitter", "yahoo", "dropbox", "adobe", "whatsapp",
 ]
+
+# Registered-domain labels the brands above really own. A brand name inside
+# one of these is the brand's own site, not an impersonation; it differs from
+# the token for "wells" (wellsfargo.com) and "citi" (citibank.com).
+BRAND_OWN_DOMAIN_LABELS = frozenset(BRAND_NAMES) | {"wellsfargo", "citibank"}
 
 
 def _shannon_entropy(text: str) -> float:
@@ -140,6 +147,51 @@ def add_brand_name_feature(
     return df
 
 
+def add_brand_and_pay_features(df: pd.DataFrame, url_s: pd.Series) -> pd.DataFrame:
+    """Brand names and "pay" only where they point to impersonation.
+
+    ``HasBrandName`` and ``Pay`` also fire on a brand's own domain, so v9
+    scores ``paypal.com`` 0.79. These versions ignore the registered domain
+    when the brand owns it (``paypal.com``, ``login.paypal.com/signin``) and
+    count the brand when it sits in user info, a subdomain, path or query
+    (``paypal.com.account-verify.xyz``) or inside another registered domain
+    (``paypal-secure.com``).
+    """
+    parts = url_s.map(split_registered_domain)
+    label = parts.str[0]
+    outside = parts.str[1]
+    own_brand_domain = label.isin(BRAND_OWN_DOMAIN_LABELS)
+    brands = "|".join(BRAND_NAMES)
+
+    df["BrandOutsideDomain"] = outside.str.contains(brands).astype(int)
+    df["BrandInDomainNotExact"] = (label.str.contains(brands) & ~own_brand_domain).astype(int)
+    df["PayNotBrandDomain"] = (
+        outside.str.contains("pay") | (label.str.contains("pay") & ~own_brand_domain)
+    ).astype(int)
+    return df
+
+
+_EMAIL_RE = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"
+_HOST_PART_RE = r"^[^/?#]*"
+
+
+def add_at_sign_features(df: pd.DataFrame, url_s: pd.Series) -> pd.DataFrame:
+    """Tell the "@" tricks phishing uses apart from "@" handles.
+
+    ``NumAtSymbol`` counts every "@", so v9 scores ``substack.com/@alexkazos``
+    0.81: profile handles (Substack, Medium, YouTube) are newer than the
+    training data. What phishing really uses is an email address in the URL
+    (the victim's, in a query such as ``?email=jo@example.com``) and user info
+    before the host (``paypal.com@evil.example/login``).
+    """
+    df["NumEmailsInURL"] = url_s.str.count(_EMAIL_RE)
+    host_part = url_s.str.extract(f"({_HOST_PART_RE})", expand=False).fillna("")
+    df["HasUserInfo"] = host_part.str.contains("@", regex=False).astype(int)
+    # Percent-encoding alone: the obfuscation half of NoOfObfuscatedChar ([%@]).
+    df["NumPercentChars"] = url_s.str.count("%")
+    return df
+
+
 def add_vowel_ratio(df: pd.DataFrame, url_s: pd.Series) -> pd.DataFrame:
     """Add ratio of vowels to total letters in the URL."""
     num_vowels = url_s.str.count(r"[aeiouAEIOU]")
@@ -176,6 +228,8 @@ def add_all_new_features(df: pd.DataFrame) -> pd.DataFrame:
     df = add_suspicious_tld_feature(df)
     df = add_suspicious_word_count(df, lower_url)
     df = add_brand_name_feature(df, lower_url)
+    df = add_brand_and_pay_features(df, url_s)
+    df = add_at_sign_features(df, url_s)
     df = add_vowel_ratio(df, url_s)
 
     return df

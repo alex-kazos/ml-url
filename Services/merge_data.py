@@ -3,16 +3,12 @@ from pathlib import Path
 
 # Import configuration
 from Utilities.config import PROCESSED_DATA_PATH
-from Utilities.Services.preprocess_data_utils import (
-    preprocess_phishing,
-)
 
 # Import utility functions
 from Utilities.Services.merge_data_utils import (
     remove_duplicates_and_nan,
     balance_dataset, keep_common_columns, normalise_uci,
 )
-from Services.preprocess_data import preprocess_data_service
 
 # Import data class
 from Classes.DataToMerge import DataToMerge
@@ -56,10 +52,10 @@ def merge_data_service(dataToMerge:DataToMerge=None,pkl_path:Path=None)->pd.Data
     balanced_df = balance_dataset(cleaned_df)
 
     if pkl_path:
-         # Persist the final dataset
+        # Persist the final dataset where the caller asked for it
+        pkl_path = Path(pkl_path)
         pkl_path.mkdir(parents=True, exist_ok=True)
-        # Save the final dataset
-        balanced_df.to_pickle(PROCESSED_DATA_PATH / "final_dataset.pkl")
+        balanced_df.to_pickle(pkl_path / "final_dataset.pkl")
 
     return balanced_df
 
@@ -70,4 +66,5 @@ if __name__ == "__main__":
     # merge_data_service(dataToMerge)
 
     # By default, assume preprocess step has already been run and preprocessed datasets are available.
-    merge_data_service()
+    # Save final_dataset.pkl where Services/feature_engineering.py reads it.
+    merge_data_service(pkl_path=PROCESSED_DATA_PATH)

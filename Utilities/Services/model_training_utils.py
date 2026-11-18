@@ -72,7 +72,7 @@ def plot_confusion_matrix(
     fig.tight_layout()
     fig.savefig(save_path, dpi=150)
     plt.close(fig)
-    print(f"  Saved confusion matrix → {save_path}")
+    print(f"  Saved confusion matrix -> {save_path}")
 
 
 def plot_roc_curve(
@@ -95,7 +95,7 @@ def plot_roc_curve(
     fig.tight_layout()
     fig.savefig(save_path, dpi=150)
     plt.close(fig)
-    print(f"  Saved ROC curve       → {save_path}")
+    print(f"  Saved ROC curve       -> {save_path}")
 
 
 def plot_feature_importance(
@@ -122,4 +122,4 @@ def plot_feature_importance(
     fig.tight_layout()
     fig.savefig(save_path, dpi=150)
     plt.close(fig)
-    print(f"  Saved feature importance → {save_path}")
+    print(f"  Saved feature importance -> {save_path}")

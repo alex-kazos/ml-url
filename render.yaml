@@ -6,7 +6,10 @@ services:
     buildCommand: pip install -r requirements-api.txt
     startCommand: uvicorn Services.api:app --host 0.0.0.0 --port $PORT
     envVars:
+      # Same Python as the training venv and the Dockerfile (python:3.11-slim)
+      - key: PYTHON_VERSION
+        value: 3.11.9
       - key: API_MODEL_NAME
         value: champion
       - key: API_ALLOWED_ORIGINS
-        value: https://www.alexkazos.com
+        value: https://alexkazos.com,https://www.alexkazos.com

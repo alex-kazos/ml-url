@@ -41,6 +41,10 @@ MLFLOW_MODEL_NAME = _get_env('MLFLOW_MODEL_NAME', 'ml-url')
 PROMOTION_METRIC = _get_env('PROMOTION_METRIC', 'F1-Score')
 PROMOTION_MIN_IMPROVEMENT = float(_get_env('PROMOTION_MIN_IMPROVEMENT', '0.002'))
 PROMOTION_RECALL_TOLERANCE = float(_get_env('PROMOTION_RECALL_TOLERANCE', '0.005'))
+# Precision floor for the challenger, and a health check for the champion: a
+# model that calls almost everything phishing has high recall and must not be
+# able to block a better one through the recall gate.
+PROMOTION_MIN_PRECISION = float(_get_env('PROMOTION_MIN_PRECISION', '0.80'))
 # Render's free tier has 512 MB of RAM, so keep the served bundle well below that.
 MAX_BUNDLE_MB = float(_get_env('MAX_BUNDLE_MB', '50'))
 EVAL_SAMPLE_SIZE = int(_get_env('EVAL_SAMPLE_SIZE', '2000'))
@@ -48,6 +52,18 @@ EVAL_SAMPLE_SIZE = int(_get_env('EVAL_SAMPLE_SIZE', '2000'))
 # Golden set: hand-picked URLs every served model must mostly get right
 GOLDEN_SET_PATH = PROJECT_ROOT / os.getenv('GOLDEN_SET_PATH', 'Models/golden_set.csv')
 GOLDEN_SET_MIN_ACCURACY = float(_get_env('GOLDEN_SET_MIN_ACCURACY', '0.75'))
+
+# Holdout set: fixed, labelled URLs (url,label) that are removed from every
+# training run and used to compare champion and challenger, so neither model
+# is scored on URLs it trained on. Frozen from the v9 run's evaluation set
+# (2,000 URLs from its test split). No '#' comments: some URLs contain '#'.
+HOLDOUT_SET_PATH = PROJECT_ROOT / os.getenv('HOLDOUT_SET_PATH', 'Models/holdout_set.csv')
+
+# Lookalike rule: typosquat candidates come only from the top N reference domains
+# (by rank). Exact and leetspeak matches still use the whole reference list, so a
+# known site is never flagged, but an unknown one is not matched against obscure
+# domains nobody would impersonate.
+LOOKALIKE_TARGET_LIMIT = int(_get_env('LOOKALIKE_TARGET_LIMIT', '5000'))
 
 # Name of the exported champion bundle in Models/ (served when API_MODEL_NAME=champion)
 CHAMPION_FILE_STEM = _get_env('CHAMPION_FILE_STEM', 'champion')

@@ -3,6 +3,9 @@ import pandas as pd
 
 from Utilities.Services.preprocess_data_utils import normalise_url, preprocess_phishing
 
+# UCI's lowercase ``label``: 1 = legitimate, 0 = phishing (the opposite of label_binary)
+UCI_LABELS = {1: "good", 0: "bad"}
+
 
 def normalise_uci(df: pd.DataFrame) -> pd.DataFrame:
     """Bring the UCI dataset into the Kaggle schema.
@@ -17,7 +20,7 @@ def normalise_uci(df: pd.DataFrame) -> pd.DataFrame:
     uci = pd.DataFrame(
         {
             "URL": df["URL"].astype(str),
-            "Label": df["label"].map({1: "good", 0: "bad"}),
+            "Label": df["label"].map(UCI_LABELS),
         }
     ).dropna(subset=["Label"])
     return preprocess_phishing(uci)
@@ -33,13 +36,25 @@ def keep_common_columns(df: pd.DataFrame, common_cols: list) -> pd.DataFrame:
     return df[common_cols].copy()
 
 
+def find_conflicting_urls(df: pd.DataFrame) -> pd.Index:
+    """URLs that appear labelled both "good" and "bad", across or within sources."""
+    labels_per_url = df.groupby("URL")["Label"].nunique()
+    return labels_per_url.index[labels_per_url > 1]
+
+
 def remove_duplicates_and_nan(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Removes duplicate URLs and rows with NaN values.
+    Removes URLs with conflicting labels, duplicate URLs and rows with NaN values.
+
+    A URL labelled both ways has no trustworthy label, so all its rows go
+    instead of keeping whichever source happens to come first.
     """
-    df.drop_duplicates(subset=["URL"], keep="first", inplace=True)
-    df.dropna(inplace=True)
-    return df
+    conflicting = find_conflicting_urls(df)
+    if len(conflicting):
+        print(f"Dropping {len(conflicting):,} URLs labelled both good and bad")
+        df = df.loc[~df["URL"].isin(conflicting)]
+    df = df.drop_duplicates(subset=["URL"], keep="first")
+    return df.dropna()
 
 
 def balance_dataset(df: pd.DataFrame) -> pd.DataFrame:
@@ -66,17 +81,33 @@ def summarise_sources(
 
     Logged to MLflow with every training run, so a source that silently drops
     out of the training data shows up as a zero instead of going unnoticed.
+
+    A URL present in both sources counts in ``rows_from_uci`` *and*
+    ``rows_from_kaggle``, so the two add up to
+    ``rows_after_merge + rows_in_both``.
     """
     def _urls(df: pd.DataFrame) -> pd.Series:
         return df["URL"].astype(str).map(normalise_url) if "URL" in df else pd.Series(dtype=str)
 
+    def _labelled(df: pd.DataFrame) -> pd.DataFrame:
+        if "Label" in df:
+            labels = df["Label"]
+        elif "label" in df:
+            labels = df["label"].map(UCI_LABELS)
+        else:
+            return pd.DataFrame(columns=["URL", "Label"])
+        return pd.DataFrame({"URL": _urls(df), "Label": labels})
+
     merged_urls = _urls(merged_df)
-    uci_urls = set(_urls(urls_uci))
-    kaggle_urls = set(_urls(urls_kaggle))
+    in_uci = merged_urls.isin(set(_urls(urls_uci)))
+    in_kaggle = merged_urls.isin(set(_urls(urls_kaggle)))
+    conflicting = find_conflicting_urls(pd.concat([_labelled(urls_uci), _labelled(urls_kaggle)]))
     return {
         "rows_uci_raw": int(len(urls_uci)),
         "rows_kaggle_raw": int(len(urls_kaggle)),
         "rows_after_merge": int(len(merged_df)),
-        "rows_from_uci": int(merged_urls.isin(uci_urls).sum()),
-        "rows_from_kaggle": int(merged_urls.isin(kaggle_urls).sum()),
+        "rows_from_uci": int(in_uci.sum()),
+        "rows_from_kaggle": int(in_kaggle.sum()),
+        "rows_in_both": int((in_uci & in_kaggle).sum()),
+        "urls_with_conflicting_labels": int(len(conflicting)),
     }

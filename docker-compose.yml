@@ -11,7 +11,7 @@ services:
   api:
     build: .
     environment:
-      API_MODEL_NAME: ${API_MODEL_NAME:-XGBoost}
+      API_MODEL_NAME: ${API_MODEL_NAME:-champion}
     ports:
       - "8000:8000"
 

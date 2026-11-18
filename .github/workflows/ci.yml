@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Lint and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same Python as the training venv, the Dockerfile and Render
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements-api.txt
+            requirements-ci.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-ci.txt
+
+      - name: Lint
+        run: ruff check .
+
+      # Includes the smoke tests: the golden set and the lookalike checks run
+      # against the committed Models/champion.pkl, the file Render serves.
+      - name: Tests
+        run: pytest -q
+
+  alert-rules:
+    name: Prometheus alert rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same Prometheus image as docker-compose.yml
+      - name: Check and unit-test alerts.yml
+        run: |
+          promtool() {
+            docker run --rm -v "$PWD/monitoring/prometheus:/rules:ro" -w /rules \
+              --entrypoint promtool prom/prometheus:v3.5.0 "$@"
+          }
+          promtool check rules alerts.yml
+          promtool test rules alerts_test.yml

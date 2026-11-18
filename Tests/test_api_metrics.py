@@ -75,6 +75,29 @@ def test_metrics_endpoint_is_open_without_token(monkeypatch):
     assert "mlurl_model_info" in response.text
 
 
+def test_predict_rejects_empty_and_oversized_urls(monkeypatch):
+    monkeypatch.setattr(api, "predict_url", _fake_predict(0))
+
+    assert client.post("/predict", json={"url": ""}).status_code == 422
+    too_long = "example.com/" + "a" * 5000
+    assert client.post("/predict", json={"url": too_long}).status_code == 422
+    at_limit = "a" * api.MAX_URL_LENGTH
+    assert client.post("/predict", json={"url": at_limit}).status_code == 200
+
+
+def test_allowed_origins_come_from_the_environment_with_defaults():
+    assert api.parse_allowed_origins(None) == list(api.DEFAULT_ALLOWED_ORIGINS)
+    assert api.parse_allowed_origins("  ") == list(api.DEFAULT_ALLOWED_ORIGINS)
+    assert api.parse_allowed_origins("https://a.example, https://b.example,") == [
+        "https://a.example",
+        "https://b.example",
+    ]
+    # Both forms of the blog domain, so neither is cut off by CORS.
+    assert {"https://alexkazos.com", "https://www.alexkazos.com"} <= set(
+        api.DEFAULT_ALLOWED_ORIGINS
+    )
+
+
 def test_health_reports_model_version():
     body = client.get("/health").json()
 

@@ -2,15 +2,15 @@
 import warnings
 warnings.filterwarnings("ignore")
 
-# Import configuration
-from Utilities.config import (
+# Import configuration (after the warnings filter on purpose)
+from Utilities.config import (  # noqa: E402
     RAW_DATA_PATH,
     UCI_PHISHING_REPO_ID,
     KAGGLE_DATASETS
 )
 
 # Import utility functions
-from Utilities.Services.extract_data_utils import (
+from Utilities.Services.extract_data_utils import (  # noqa: E402
     extract_uci_data,
     extract_kaggle_data,
     )

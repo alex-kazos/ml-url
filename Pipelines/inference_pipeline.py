@@ -6,7 +6,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from Services.inference_service import inference_service
+from Services.inference_service import inference_service  # noqa: E402
 
 
 def main() -> None:
