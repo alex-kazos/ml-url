@@ -1,0 +1,10 @@
+# What the test suite imports, on top of the serving pins. Used by CI
+# (.github/workflows/ci.yml); much lighter than requirements.txt (no Jupyter,
+# plotting or WHOIS). Versions match the training environment.
+-r requirements-api.txt
+mlflow==3.16.1
+kagglehub==0.4.3
+ucimlrepo==0.0.7
+httpx==0.28.1
+pytest==9.0.3
+ruff==0.15.12

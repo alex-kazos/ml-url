@@ -227,6 +227,11 @@ unset, the API allows `alexkazos.com`, `www.alexkazos.com` and
 pytest
 ```
 
+CI (`.github/workflows/ci.yml`) runs on every pull request and every push to
+`master`: `ruff check .`, the test suite (including the smoke tests on the
+committed `Models/champion.pkl`) with the dependencies in
+`requirements-ci.txt`, and `promtool` on the alert rules.
+
 The first tests cover the project contracts that are easiest to break:
 
 - `1` means phishing and `0` means legitimate.
