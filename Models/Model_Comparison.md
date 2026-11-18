@@ -1,52 +1,40 @@
-# URL Phishing Detection: Model Training Report
+# URL Phishing Detection: Model Comparison
 
-This report summarizes one baseline training run for the phishing URL detection
-pipeline. Generated plots and model binaries are intentionally ignored by Git;
-rerun training to regenerate them locally under `Models/`.
+Written by `Services/model_training.py` at the end of every training run, so it
+describes the latest run. Do not edit it by hand. The model the API serves is
+the promoted champion in `Models/champion.json`, which can come from an
+earlier run.
 
-## Dataset Overview
+Generated: 2026-09-30T16:42:05+00:00
 
-- Total shape: `(228,596, 50)`
-- Features used: `44`
-- Training set: `182,876` samples
-- Test set: `45,720` samples
-- Dropped columns: `URL`, `Domain`, `TLD`, `Label`, `TLDLegitimateProb`
+## Dataset
+
+- Rows: 411,080
+- From UCI: 149,677, from Kaggle: 261,982, in both: 579
+- Features: 43
+- Training set: 328,864
+- Test set: 82,216
+- Not used as features: `URL`, `Domain`, `TLD`, `Label`, `TLDLegitimateProb`
+
+## Candidates
+
+Accuracy to ROC-AUC are measured on the test split with the model alone. The
+golden set (`Models/golden_set.csv`) goes through the full prediction path,
+lookalike rule included, like the API.
+
+| Model | Version | Accuracy | Precision | Recall | F1-Score | ROC-AUC | Golden set | Bundle (MB) | p50 (ms) | Training (s) |
+|:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| Logistic Regression | v7 | 0.7860 | 0.8313 | 0.7177 | 0.7703 | 0.8659 | 0.8750 | 8.2 | 13.6 | 1.5 |
+| Random Forest | v8 | 0.8603 | 0.8675 | 0.8505 | 0.8589 | 0.9370 | 0.8750 | 695.3 | 53.9 | 15.0 |
+| XGBoost | v9 | 0.8684 | 0.9083 | 0.8194 | 0.8616 | 0.9438 | 0.9375 | 8.6 | 71.7 | 4.0 |
+
+Challenger: **XGBoost** (v9), the best F1-Score among the candidates that pass the golden-set, precision and size gates. `Pipelines/promotion_pipeline.py` compares it with the champion on the same evaluation set before anything is served.
 
 ## Label Contract
-
-The project uses one label convention throughout training, metrics, and
-inference:
 
 ```text
 0 = legitimate / safe
 1 = phishing / suspicious
 ```
-
-## Model Comparison
-
-| Model | Accuracy | Precision | Recall | F1-Score | ROC-AUC | Training Time |
-|:--|--:|--:|--:|--:|--:|--:|
-| Random Forest | 0.9026 | 0.8977 | 0.9088 | 0.9032 | 0.9668 | 6.87s |
-| XGBoost | 0.8894 | 0.8742 | 0.9097 | 0.8916 | 0.9605 | 0.93s |
-| Logistic Regression | 0.7861 | 0.7580 | 0.8406 | 0.7972 | 0.8793 | 10.34s |
-
-## Notes
-
-Random Forest performed best overall in this run, with the strongest F1 score
-and ROC-AUC. XGBoost remained close while training faster and achieving slightly
-higher recall. Logistic Regression is useful as an interpretable baseline, but
-it is weaker for the non-linear URL patterns captured by the tree models.
-
-The generated artifacts from training are:
-
-- `Models/Logistic_Regression.pkl`
-- `Models/Random_Forest.pkl`
-- `Models/XGBoost.pkl`
-- `Models/*_confusion_matrix.png`
-- `Models/*_roc_curve.png`
-- `Models/*_feature_importance.png`
-
-For reproducible experiment tracking, prefer MLflow, DVC, Git LFS, release
-assets, or another artifact store instead of committing these files directly.
 
 [Go to README](../README.md)

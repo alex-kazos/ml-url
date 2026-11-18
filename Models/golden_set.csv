@@ -4,6 +4,12 @@
 # Rows 6-8: hand-picked phishing patterns (lookalike, brand in subdomain, free TLD).
 # Rows 9-13: first rows of the UCI PhiUSIIL dataset (label = legitimate).
 # Rows 14-16: well-known legitimate URLs typed the way people paste them.
+# Rows 17-21: regressions found in Nov 2026. substack.com was flagged by the
+#   lookalike rule (typosquat of tubestack.com); the bare Substack subdomain and
+#   paypal.com are still flagged by the v9 model itself and need a retrain
+#   (brand / pay features fire inside the brand's own domain, and hosts with a
+#   subdomain but no path look like phishing). linkedln.com and faceb00k.com
+#   check that the rule still catches real typosquats.
 # Note: lines starting with '#' are comments, so don't add URLs containing '#'.
 url,label
 nobell.it/70ffb52d079109dca5664cce6f317373782/login.SkyPe.com/en/cgi-bin/verification/login/70ffb52d079109dca5664cce6f317373/index.php?cmd=_profile-ach&outdated_page_tmpl=p/gen/failed-to-load&nav=0.5.1&login_access=1322408526,1
@@ -22,3 +28,8 @@ https://www.rewildingargentina.org,0
 google.com,0
 en.wikipedia.org/wiki/Phishing,0
 github.com/alex-kazos/ml-url,0
+substack.com,0
+https://alexkazos.substack.com,0
+paypal.com,0
+linkedln.com,1
+faceb00k.com,1

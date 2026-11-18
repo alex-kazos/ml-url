@@ -1,6 +1,7 @@
 import pickle
 import time
 import warnings
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -8,7 +9,6 @@ import pandas as pd
 import mlflow
 
 from Utilities.config import (
-    GOLDEN_SET_MIN_ACCURACY,
     MAX_BUNDLE_MB,
     MLFLOW_MODEL_NAME,
     MODELS_PATH,
@@ -29,6 +29,7 @@ from Services.model_registry import (
     golden_set_check,
     log_bundle_model,
     measure_latency_ms,
+    quality_gate_failures,
     set_alias,
 )
 
@@ -45,6 +46,7 @@ COLUMNS_TO_DROP: List[str] = [
 
 TARGET_COLUMN = "label_binary"
 RANDOM_STATE = 42
+MODEL_COMPARISON_FILE = "Model_Comparison.md"
 LABEL_MAPPING = {"legitimate": 0, "phishing": 1}
 
 
@@ -91,6 +93,26 @@ def load_data(data_path: Path) -> pd.DataFrame:
     return df
 
 
+def check_label_contract(df: pd.DataFrame) -> None:
+    """Fail fast when ``label_binary`` does not mean 1 = phishing.
+
+    ``Label`` is the source's own "bad"/"good" string and survives feature
+    engineering, so it can re-derive the target. A cached
+    ``ml_ready_dataset.csv`` written under an older label convention would
+    otherwise train a model that is wrong half the time without any error.
+    """
+    if "Label" not in df.columns:
+        return
+    expected = (df["Label"] == "bad").astype(int)
+    mismatched = int((expected != df[TARGET_COLUMN]).sum())
+    if mismatched:
+        raise ValueError(
+            f"label_binary disagrees with Label on {mismatched:,} of {len(df):,} rows "
+            "(label_binary must be 1 exactly when Label == 'bad', i.e. phishing). "
+            "The cached dataset is stale: rerun Pipelines/training_pipeline.py."
+        )
+
+
 def prepare_data(
     df: pd.DataFrame,
     test_size: float = 0.2,
@@ -105,6 +127,7 @@ def prepare_data(
     """Drop non-feature columns and split into train / test."""
     if TARGET_COLUMN not in df.columns:
         raise ValueError(f"Missing target column: {TARGET_COLUMN}")
+    check_label_contract(df)
 
     url_char_model = (
         URLCharacterProbabilityModel.fit(df["URL"]) if "URL" in df.columns else None
@@ -255,6 +278,108 @@ def _print_summary(results: Dict[str, Dict[str, float]]) -> None:
     print(f"{'='*len(header)}")
 
 
+# (metric key, column header, format) for Models/Model_Comparison.md
+COMPARISON_COLUMNS = [
+    ("Accuracy", "Accuracy", ".4f"),
+    ("Precision", "Precision", ".4f"),
+    ("Recall", "Recall", ".4f"),
+    ("F1-Score", "F1-Score", ".4f"),
+    ("ROC-AUC", "ROC-AUC", ".4f"),
+    ("golden_set_accuracy", "Golden set", ".4f"),
+    ("bundle_size_mb", "Bundle (MB)", ".1f"),
+    ("inference_ms_p50", "p50 (ms)", ".1f"),
+    ("training_time_s", "Training (s)", ".1f"),
+]
+
+
+def render_model_comparison(
+    results: Dict[str, Dict[str, float]],
+    versions: Dict[str, str],
+    challenger: Optional[str],
+    dataset: Dict[str, Any],
+    generated_at: Optional[str] = None,
+) -> str:
+    """Markdown report of one training run, for readers without MLflow access.
+
+    ``dataset`` holds ``rows``, ``features``, ``train`` and ``test``, plus the
+    per-source counts from ``summarise_sources`` when the full pipeline ran.
+    """
+    if generated_at is None:
+        generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    def _n(key: str) -> str:
+        value = dataset.get(key)
+        return f"{int(value):,}" if value is not None else "n/a"
+
+    lines = [
+        "# URL Phishing Detection: Model Comparison",
+        "",
+        "Written by `Services/model_training.py` at the end of every training run, so it",
+        "describes the latest run. Do not edit it by hand. The model the API serves is",
+        "the promoted champion in `Models/champion.json`, which can come from an",
+        "earlier run.",
+        "",
+        f"Generated: {generated_at}",
+        "",
+        "## Dataset",
+        "",
+        f"- Rows: {_n('rows')}",
+    ]
+    if "rows_from_uci" in dataset:
+        lines.append(
+            f"- From UCI: {_n('rows_from_uci')}, from Kaggle: {_n('rows_from_kaggle')}, "
+            f"in both: {_n('rows_in_both')}"
+        )
+    lines += [
+        f"- Features: {_n('features')}",
+        f"- Training set: {_n('train')}",
+        f"- Test set: {_n('test')}",
+        "- Not used as features: " + ", ".join(f"`{c}`" for c in COLUMNS_TO_DROP),
+        "",
+        "## Candidates",
+        "",
+        "Accuracy to ROC-AUC are measured on the test split with the model alone. The",
+        "golden set (`Models/golden_set.csv`) goes through the full prediction path,",
+        "lookalike rule included, like the API.",
+        "",
+        "| Model | Version | " + " | ".join(header for _, header, _ in COMPARISON_COLUMNS) + " |",
+        "|:--|--:|" + "--:|" * len(COMPARISON_COLUMNS),
+    ]
+    for name, metrics in results.items():
+        cells = [
+            format(metrics[key], fmt) if key in metrics else "n/a"
+            for key, _, fmt in COMPARISON_COLUMNS
+        ]
+        version = versions.get(name)
+        lines.append(f"| {name} | {'v' + version if version else 'n/a'} | " + " | ".join(cells) + " |")
+
+    lines.append("")
+    if challenger:
+        version = versions.get(challenger)
+        lines.append(
+            f"Challenger: **{challenger}**{f' (v{version})' if version else ''}, the best "
+            f"{PROMOTION_METRIC} among the candidates that pass the golden-set, precision and "
+            "size gates. `Pipelines/promotion_pipeline.py` compares it with the champion on "
+            "the same evaluation set before anything is served."
+        )
+    else:
+        lines.append("No candidate passed the golden-set, precision and size gates.")
+
+    lines += [
+        "",
+        "## Label Contract",
+        "",
+        "```text",
+        "0 = legitimate / safe",
+        "1 = phishing / suspicious",
+        "```",
+        "",
+        "[Go to README](../README.md)",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def _candidate_models(random_state: int) -> Dict[str, Any]:
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.linear_model import LogisticRegression
@@ -292,9 +417,10 @@ def model_training_service(
     """Train the candidates, log them to MLflow and register the best as challenger.
 
     Every candidate becomes a new version of the ``MLFLOW_MODEL_NAME`` registered
-    model. The best one that passes the golden-set and bundle-size gates gets the
-    ``challenger`` alias; ``Pipelines/promotion_pipeline.py`` decides whether it
-    replaces the current champion.
+    model. The best one that passes the golden-set, precision and bundle-size
+    gates gets the ``challenger`` alias; ``Pipelines/promotion_pipeline.py``
+    decides whether it replaces the current champion. The run is summarised in
+    ``Models/Model_Comparison.md``.
     """
     if df is not None:
         print(f"Using provided DataFrame (shape: {df.shape})")
@@ -404,18 +530,15 @@ def model_training_service(
 
     _print_summary(results)
 
-    eligible = [
-        c for c in candidates
-        if c["metrics"]["golden_set_accuracy"] >= GOLDEN_SET_MIN_ACCURACY
-        and c["metrics"]["bundle_size_mb"] <= MAX_BUNDLE_MB
-    ]
+    eligible = []
     for c in candidates:
-        if c not in eligible:
-            print(
-                f"  Not eligible: {c['name']} (golden set "
-                f"{c['metrics']['golden_set_accuracy']:.2f}, "
-                f"bundle {c['metrics']['bundle_size_mb']:.1f} MB)"
-            )
+        failures = quality_gate_failures(c["metrics"])
+        if c["metrics"]["bundle_size_mb"] > MAX_BUNDLE_MB:
+            failures.append(f"bundle {c['metrics']['bundle_size_mb']:.1f} MB > {MAX_BUNDLE_MB:.0f} MB")
+        if failures:
+            print(f"  Not eligible: {c['name']} ({'; '.join(failures)})")
+        else:
+            eligible.append(c)
 
     if eligible:
         best = max(eligible, key=lambda c: c["metrics"][PROMOTION_METRIC])
@@ -427,7 +550,25 @@ def model_training_service(
         )
         print("Run Pipelines/promotion_pipeline.py to compare it with the champion.")
     else:
-        print("\nNo candidate passed the golden-set and size gates; no challenger set.")
+        print("\nNo candidate passed the golden-set, precision and size gates; no challenger set.")
+
+    report_path = models_dir / MODEL_COMPARISON_FILE
+    report_path.write_text(
+        render_model_comparison(
+            results,
+            versions={c["name"]: str(c["version"]) for c in candidates},
+            challenger=best["name"] if eligible else None,
+            dataset={
+                "rows": len(df),
+                "features": len(feature_names),
+                "train": len(X_train),
+                "test": len(X_test),
+                **(dataset_stats or {}),
+            },
+        ),
+        encoding="utf-8",
+    )
+    print(f"Wrote {report_path}")
 
     return results
 

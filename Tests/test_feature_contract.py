@@ -1,6 +1,7 @@
 import pickle
 
 import pandas as pd
+import pytest
 
 from Services.inference_service import (
     _domain_impersonation_signals,
@@ -12,7 +13,7 @@ from Services.inference_service import (
     _phishing_probability,
     _preprocess_url_for_inference,
 )
-from Services.model_training import prepare_data
+from Services.model_training import prepare_data, render_model_comparison
 from Utilities.Services.preprocess_data_utils import (
     URLCharacterProbabilityModel,
     _add_label_and_tld_prob_features,
@@ -108,6 +109,46 @@ def test_prepare_data_returns_feature_metadata():
     assert char_model is not None
 
 
+def test_prepare_data_rejects_a_dataset_with_flipped_labels():
+    # A cached ml_ready_dataset.csv from before the label fix: label_binary = 1
+    # for legitimate rows. Training on it produced a model right half the time.
+    df = pd.DataFrame(
+        {
+            "URL": ["a.example", "b.example/login", "c.example", "d.example/verify"],
+            "Label": ["good", "bad", "good", "bad"],
+            "feature": [1, 2, 3, 4],
+            "label_binary": [1, 0, 1, 0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="stale"):
+        prepare_data(df, test_size=0.5, random_state=42)
+
+
+def test_model_comparison_report_describes_the_run():
+    report = render_model_comparison(
+        {
+            "XGBoost": {"Accuracy": 0.87, "Precision": 0.91, "Recall": 0.82, "F1-Score": 0.86,
+                        "golden_set_accuracy": 0.9375, "bundle_size_mb": 8.6},
+            "Random Forest": {"Accuracy": 0.86, "Precision": 0.90, "Recall": 0.81,
+                              "F1-Score": 0.85, "golden_set_accuracy": 0.875},
+        },
+        versions={"XGBoost": "9", "Random Forest": "8"},
+        challenger="XGBoost",
+        dataset={"rows": 411_080, "features": 43, "train": 328_864, "test": 82_216,
+                 "rows_from_uci": 149_677, "rows_from_kaggle": 261_982, "rows_in_both": 579},
+        generated_at="2026-11-18T00:00:00+00:00",
+    )
+
+    assert "- Rows: 411,080" in report
+    assert "in both: 579" in report
+    assert "- Features: 43" in report
+    assert "| XGBoost | v9 | 0.8700 | 0.9100 |" in report
+    assert "Challenger: **XGBoost** (v9)" in report
+    # Metrics a candidate did not log are shown as n/a, not as zeros.
+    assert "n/a" in report.split("| Random Forest |")[1].splitlines()[0]
+
+
 def test_load_model_accepts_metadata_bundle(tmp_path):
     model_path = tmp_path / "Bundled.pkl"
     artifact = {
@@ -164,6 +205,38 @@ def test_domain_impersonation_signals_allow_exact_brand_label():
     )
 
     assert signals == []
+
+
+def test_domain_impersonation_signals_detect_one_letter_swap():
+    signals = _domain_impersonation_signals("linkedln.com", reference_domains=["linkedin.com"])
+
+    assert signals == ["domain-typosquat:linkedln->linkedin.com"]
+
+
+def test_typosquat_targets_stop_at_the_target_limit():
+    # tubestack.com sits at rank ~55k in top-1m.csv and is two edits from
+    # "substack": with every reference as a target, substack.com was flagged.
+    references = ["google.com", "tubestack.com"]
+
+    assert _domain_impersonation_signals(
+        "substack.com", reference_domains=references, target_limit=1
+    ) == []
+    assert _domain_impersonation_signals(
+        "substack.com", reference_domains=references, target_limit=2
+    ) == ["domain-typosquat:substack->tubestack.com"]
+
+
+def test_exact_and_leetspeak_checks_use_every_reference_domain():
+    references = ["google.com", "tubestack.com"]
+
+    # A known site past the target limit is still recognised as known ...
+    assert _domain_impersonation_signals(
+        "tubestack.com", reference_domains=references, target_limit=1
+    ) == []
+    # ... and a leetspeak copy of it is still caught.
+    assert _domain_impersonation_signals(
+        "tub3stack.com", reference_domains=references, target_limit=1
+    ) == ["domain-lookalike:tub3stack->tubestack.com"]
 
 
 def test_reference_domain_candidates_only_use_near_length_buckets():

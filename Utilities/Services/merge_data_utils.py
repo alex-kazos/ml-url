@@ -66,17 +66,22 @@ def summarise_sources(
 
     Logged to MLflow with every training run, so a source that silently drops
     out of the training data shows up as a zero instead of going unnoticed.
+
+    A URL present in both sources counts in ``rows_from_uci`` *and*
+    ``rows_from_kaggle``, so the two add up to
+    ``rows_after_merge + rows_in_both``.
     """
     def _urls(df: pd.DataFrame) -> pd.Series:
         return df["URL"].astype(str).map(normalise_url) if "URL" in df else pd.Series(dtype=str)
 
     merged_urls = _urls(merged_df)
-    uci_urls = set(_urls(urls_uci))
-    kaggle_urls = set(_urls(urls_kaggle))
+    in_uci = merged_urls.isin(set(_urls(urls_uci)))
+    in_kaggle = merged_urls.isin(set(_urls(urls_kaggle)))
     return {
         "rows_uci_raw": int(len(urls_uci)),
         "rows_kaggle_raw": int(len(urls_kaggle)),
         "rows_after_merge": int(len(merged_df)),
-        "rows_from_uci": int(merged_urls.isin(uci_urls).sum()),
-        "rows_from_kaggle": int(merged_urls.isin(kaggle_urls).sum()),
+        "rows_from_uci": int(in_uci.sum()),
+        "rows_from_kaggle": int(in_kaggle.sum()),
+        "rows_in_both": int((in_uci & in_kaggle).sum()),
     }

@@ -74,5 +74,6 @@ groups:
         annotations:
           summary: The share of URLs typed with http(s):// moved by more than 30 points.
           description: >-
-            The model scores the same URL differently with and without a scheme,
-            so a shift in how people paste URLs changes its behaviour.
+            URLs are normalised before scoring, so this is a change in who calls
+            the API or how they paste URLs, not in how the model scores them.
+            Check the Inputs panels.

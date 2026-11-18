@@ -79,6 +79,13 @@ python Pipelines\training_pipeline.py
 
 Training writes generated datasets under `Data/` and model artifacts under
 `Models/`. These files can be large and should normally stay out of Git.
+Each run also rewrites `Models/Model_Comparison.md`, a summary of the run
+(rows per source, features, metrics per candidate, the challenger) for readers
+who do not have access to MLflow.
+
+Training refuses a dataset whose `label_binary` disagrees with its `Label`
+column (1 must mean `Label == "bad"`), so a stale `ml_ready_dataset.csv` from an
+older label convention fails loudly instead of training a broken model.
 
 ## MLOps: Tracking, Registry and Promotion
 
@@ -103,16 +110,33 @@ Each run logs the usual metrics plus what it costs to serve the model:
 `bundle_size_mb`, `inference_ms_p50` and `golden_set_accuracy`, and how many
 rows each data source contributed (`data_rows_from_uci`, `data_rows_from_kaggle`).
 
-A challenger only replaces the champion when, on the same evaluation set:
+Every challenger must pass absolute gates:
 
-- F1 improves by at least `PROMOTION_MIN_IMPROVEMENT` (default 0.002),
-- recall does not drop by more than `PROMOTION_RECALL_TOLERANCE` (default 0.005),
-- it scores at least `GOLDEN_SET_MIN_ACCURACY` on `Models/golden_set.csv`,
+- it scores at least `GOLDEN_SET_MIN_ACCURACY` (default 0.75) on `Models/golden_set.csv`,
+- its precision is at least `PROMOTION_MIN_PRECISION` (default 0.80),
 - its bundle is under `MAX_BUNDLE_MB` (default 50, for Render's free tier).
+
+It then replaces the champion when, on the same evaluation set:
+
+- F1 improves by at least `PROMOTION_MIN_IMPROVEMENT` (default 0.002), and
+- recall does not drop by more than `PROMOTION_RECALL_TOLERANCE` (default 0.005).
+
+If the champion itself fails the golden-set or precision gate, any challenger
+that passes the absolute gates replaces it. Otherwise a model that calls almost
+everything phishing (recall near 1, precision near 0.5) could block a better
+one through the recall gate forever.
 
 Promotion exports the champion to `Models/champion.pkl` and
 `Models/champion.json`. The API does not talk to MLflow at runtime: commit the
-exported files and set `API_MODEL_NAME=champion` on Render to serve them.
+exported files to serve them. The API, Docker Compose, the CLI and the smoke
+test all default to `champion`; `Models/XGBoost.pkl` and the other candidate
+bundles are overwritten by every training run, promoted or not.
+
+`requirements-api.txt` pins pandas, numpy, scikit-learn and xgboost to the
+versions of the training environment, because the bundle is a pickle and only
+loads reliably with the versions that wrote it. Update the pins (and
+`SERVING_REQUIREMENTS` in `Services/model_registry.py`, which a test keeps in
+step) whenever a champion is trained with newer libraries.
 
 Any registered version can also be loaded straight from the registry:
 
@@ -165,9 +189,21 @@ promtool test rules alerts_test.yml
 python Pipelines\inference_pipeline.py
 ```
 
-By default inference loads `Models/XGBoost.pkl`. New model files are
-metadata bundles rather than raw estimator pickles, so inference can reproduce
-the training feature schema.
+By default inference loads `Models/champion.pkl`, the model the API serves.
+New model files are metadata bundles rather than raw estimator pickles, so
+inference can reproduce the training feature schema.
+
+On top of the model, a lookalike rule flags domains that imitate a well-known
+one. Leetspeak copies (`paypa1.com`) and known sites are checked against the
+top 100,000 domains of `top-1m.csv`; typosquats (up to two edits away, such as
+`linkedln.com`) only against the top `LOOKALIKE_TARGET_LIMIT` (default 5,000).
+Matching an unknown site against all 100,000 always finds some obscure domain
+two edits away (`substack.com` -> `tubestack.com`), and nobody typosquats those.
+
+`/predict` accepts URLs of 1 to 2,048 characters; anything else gets a 422.
+CORS origins come from `API_ALLOWED_ORIGINS` (comma-separated); when it is
+unset, the API allows `alexkazos.com`, `www.alexkazos.com` and
+`localhost:8080`.
 
 ## Tests
 
@@ -183,7 +219,14 @@ The first tests cover the project contracts that are easiest to break:
 - Non-feature columns are dropped before prediction.
 - Promotion gates, per-source row counts and the `/metrics` endpoint behave.
 - `Tests/test_model_smoke.py` runs the golden set against the model file the
-  API serves, so a mislabelled or stale model fails before it reaches users.
+  API serves, so a mislabelled or stale model fails before it reaches users,
+  and checks with the bundle's own domain list that the lookalike rule leaves
+  legitimate sites alone (`substack.com`, `sfnmjournal.com`) but still catches
+  typosquats (`linkedln.com`, `faceb00k.com`).
+- Training rejects a dataset whose `label_binary` disagrees with `Label`.
+- A champion that fails its own gates cannot block a healthy challenger.
+- The serving pins in `requirements-api.txt` match the ones logged with every
+  MLflow model.
 - Rows from both UCI and Kaggle survive the merge with correctly mapped labels
   (UCI uses a lowercase `label` column where 1 = legitimate).
 - URLs are normalised (scheme, leading `www.` and trailing `/` removed) before
@@ -199,6 +242,27 @@ The first tests cover the project contracts that are easiest to break:
 - [Kaggle Top 1M](https://www.kaggle.com/datasets/cheedcheed/top1m)
 
 ## Recommended Next Steps
+
+These need a retrain, so they go into one training run together:
+
+- Count brand names and `pay` only outside the registered domain (subdomain,
+  path, query) or in a domain that is not the brand itself. Today `paypal.com`
+  scores 0.79 because `Pay` and `HasBrandName` fire on the brand's own domain.
+- Check whether "subdomain and no path" has become a source signal (UCI's
+  legitimate rows are mostly bare `www.domain.tld` homepages). The bare homepage
+  of a Substack publication still scores as phishing; post URLs score below 0.03.
+- Fit the URL character model on the training split only (it is fitted on all
+  rows before the split today).
+- Drop features that add nothing: `HasTitle`, `NoOfSubDomain`
+  (`NumSubdomains` - 1), `HasObfuscation` (`NoOfObfuscatedChar > 0`) and
+  `URLSimilarityIndex` (`URLCharProb` x 100). Drop them at training time, not
+  from the feature code, while the current champion still uses them.
+- Drop URLs whose label differs between UCI and Kaggle instead of keeping the
+  first one.
+- Freeze one versioned holdout set for champion vs challenger, kept out of
+  every training run, so a champion is never scored on URLs it trained on.
+
+Later:
 
 - Add hyperparameter tuning now that label, feature and promotion contracts
   are in place.

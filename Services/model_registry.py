@@ -45,6 +45,7 @@ from Utilities.config import (
     PROJECT_ROOT,
     PROMOTION_METRIC,
     PROMOTION_MIN_IMPROVEMENT,
+    PROMOTION_MIN_PRECISION,
     PROMOTION_RECALL_TOLERANCE,
 )
 
@@ -53,11 +54,13 @@ CHALLENGER_ALIAS = "challenger"
 EVAL_SET_ARTIFACT = "eval/eval_set.csv"
 PYFUNC_MODEL_PATH = PROJECT_ROOT / "Services" / "pyfunc_model.py"
 CODE_PATHS = [str(PROJECT_ROOT / name) for name in ("Services", "Utilities", "Classes")]
+# Pinned like requirements-api.txt: the bundle is a pickle and only loads
+# reliably with the library versions that wrote it.
 SERVING_REQUIREMENTS = [
-    "pandas>=2.0.0",
-    "numpy>=1.24.0",
-    "scikit-learn>=1.3.0",
-    "xgboost>=2.0.0",
+    "pandas==2.3.3",
+    "numpy==2.4.2",
+    "scikit-learn==1.8.0",
+    "xgboost==3.2.0",
 ]
 
 
@@ -244,6 +247,23 @@ class PromotionCriteria:
     recall_tolerance: float = PROMOTION_RECALL_TOLERANCE
     max_bundle_mb: float = MAX_BUNDLE_MB
     golden_min_accuracy: float = GOLDEN_SET_MIN_ACCURACY
+    min_precision: float = PROMOTION_MIN_PRECISION
+
+
+def quality_gate_failures(
+    metrics: Dict[str, float],
+    criteria: PromotionCriteria = PromotionCriteria(),
+) -> List[str]:
+    """Absolute gates every served model must pass: golden set and precision floor."""
+    failures: List[str] = []
+    if metrics["golden_set_accuracy"] < criteria.golden_min_accuracy:
+        failures.append(
+            f"golden set accuracy {metrics['golden_set_accuracy']:.2f} "
+            f"< {criteria.golden_min_accuracy:.2f}"
+        )
+    if metrics["Precision"] < criteria.min_precision:
+        failures.append(f"precision {metrics['Precision']:.3f} < {criteria.min_precision:.2f}")
+    return failures
 
 
 def promotion_decision(
@@ -255,14 +275,13 @@ def promotion_decision(
 
     Both dicts hold metrics measured on the *same* evaluation set, plus
     ``golden_set_accuracy`` and ``bundle_size_mb``. Returns (promote, reasons).
-    """
-    reasons: List[str] = []
 
-    if challenger["golden_set_accuracy"] < criteria.golden_min_accuracy:
-        reasons.append(
-            f"golden set accuracy {challenger['golden_set_accuracy']:.2f} "
-            f"< {criteria.golden_min_accuracy:.2f}"
-        )
+    The challenger must pass the absolute gates (golden set, precision floor,
+    bundle size). If the champion fails its own golden-set or precision gate,
+    any challenger that passes them replaces it; otherwise the challenger also
+    has to beat the champion on ``criteria.metric`` without losing recall.
+    """
+    reasons = quality_gate_failures(challenger, criteria)
     if challenger["bundle_size_mb"] > criteria.max_bundle_mb:
         reasons.append(
             f"bundle {challenger['bundle_size_mb']:.1f} MB > {criteria.max_bundle_mb:.0f} MB limit"
@@ -272,6 +291,15 @@ def promotion_decision(
         if reasons:
             return False, reasons
         return True, ["no current champion and the challenger passes every gate"]
+
+    champion_failures = quality_gate_failures(champion, criteria)
+    if champion_failures:
+        if reasons:
+            return False, reasons
+        return True, [
+            f"the champion fails its own gates ({'; '.join(champion_failures)}) "
+            "and the challenger passes every gate"
+        ]
 
     gain = challenger[criteria.metric] - champion[criteria.metric]
     if gain < criteria.min_improvement:

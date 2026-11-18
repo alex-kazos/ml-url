@@ -7,29 +7,43 @@ from typing import Optional
 from fastapi import FastAPI, Header, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from Services.inference_service import predict_url
-from Utilities.config import MODELS_PATH
+from Utilities.config import CHAMPION_FILE_STEM, MODELS_PATH
 
 
-API_MODEL_NAME = os.getenv("API_MODEL_NAME", "XGBoost")
+API_MODEL_NAME = os.getenv("API_MODEL_NAME", CHAMPION_FILE_STEM)
 # When set, /metrics requires "Authorization: Bearer <METRICS_TOKEN>".
 METRICS_TOKEN = os.getenv("METRICS_TOKEN", "")
+# Longer inputs get a 422. Feature extraction and the lookalike check are
+# linear or worse in the URL length, and the free tier runs a single worker.
+MAX_URL_LENGTH = 2048
+
+DEFAULT_ALLOWED_ORIGINS = (
+    "https://alexkazos.com",
+    "https://www.alexkazos.com",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+)
+
+
+def parse_allowed_origins(raw: Optional[str]) -> list[str]:
+    """Comma-separated origins from API_ALLOWED_ORIGINS; unset or empty means the defaults."""
+    origins = [origin.strip() for origin in (raw or "").split(",") if origin.strip()]
+    return origins or list(DEFAULT_ALLOWED_ORIGINS)
+
+
+ALLOWED_ORIGINS = parse_allowed_origins(os.getenv("API_ALLOWED_ORIGINS"))
 
 app = FastAPI(title="Phishing URL Detection API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8080",
-        "http://127.0.0.1:8080",
-        "https://alexkazos.com",
-        "https://www.alexkazos.com",
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 
@@ -97,7 +111,7 @@ MODEL_INFO.labels(
 
 
 class PredictRequest(BaseModel):
-    url: str
+    url: str = Field(min_length=1, max_length=MAX_URL_LENGTH)
 
 
 @app.get("/health")

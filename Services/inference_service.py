@@ -20,7 +20,12 @@ from Utilities.Services.preprocess_data_utils import (
     apply_url_char_probability_model,
 )
 from Utilities.Services.feature_engineering_utils import add_all_new_features
-from Utilities.config import KAGGLE_TOP_SEARCHES_FILE_PATH, MODELS_PATH
+from Utilities.config import (
+    CHAMPION_FILE_STEM,
+    KAGGLE_TOP_SEARCHES_FILE_PATH,
+    LOOKALIKE_TARGET_LIMIT,
+    MODELS_PATH,
+)
 
 
 COLUMNS_TO_DROP = [
@@ -32,8 +37,9 @@ COLUMNS_TO_DROP = [
     "label_binary",
 ]
 
-# chose this for performance
-DEFAULT_MODEL_NAME = "XGBoost"
+# Serve the promoted champion by default. Models/XGBoost.pkl etc. are training
+# candidates and are overwritten by every training run, promoted or not.
+DEFAULT_MODEL_NAME = CHAMPION_FILE_STEM
 
 LEETSPEAK_TRANSLATION = str.maketrans(
     {
@@ -291,11 +297,26 @@ def _reference_index_from_metadata(metadata: Dict[str, Any]) -> ReferenceDomainI
     if isinstance(index, ReferenceDomainIndex):
         return index
 
+    return _reference_domain_index(_reference_domains_from_metadata(metadata))
+
+
+def _reference_domains_from_metadata(metadata: Dict[str, Any]) -> tuple[str, ...]:
     references = metadata.get("reference_domains")
     if references is None:
         references = _load_reference_domains()
+    return tuple(references)
 
-    return _reference_domain_index(tuple(references))
+
+def _target_index_from_metadata(
+    metadata: Dict[str, Any],
+    limit: int = LOOKALIKE_TARGET_LIMIT,
+) -> ReferenceDomainIndex:
+    """Index of the domains a typosquat may target: the top ``limit`` by rank.
+
+    ``reference_domains`` keeps the order of top-1m.csv, so slicing it keeps
+    the most popular sites.
+    """
+    return _reference_domain_index(_reference_domains_from_metadata(metadata)[:limit])
 
 
 def _edit_distance_at_most(left: str, right: str, max_edits: int) -> bool:
@@ -325,7 +346,21 @@ def _domain_impersonation_signals(
     url: str,
     reference_domains: Optional[Iterable[str]] = None,
     reference_index: Optional[ReferenceDomainIndex] = None,
+    target_index: Optional[ReferenceDomainIndex] = None,
+    target_limit: int = LOOKALIKE_TARGET_LIMIT,
 ) -> list[str]:
+    """Flag a registered domain that imitates a well-known one.
+
+    Exact and leetspeak matches are checked against every reference domain
+    (``reference_index``), so a known site is never flagged. Typosquat
+    candidates (up to two edits away) come only from ``target_index``, the top
+    ``target_limit`` domains by rank: matching an unknown site against 100,000
+    domains always finds an obscure one two edits away (substack.com ->
+    tubestack.com), and nobody typosquats those.
+
+    When ``reference_index`` is passed without ``target_index``, it is used for
+    both checks.
+    """
     hostname = _hostname_from_url(url)
     root_label = _compact_hostname_label(_registered_domain_label(hostname))
     if len(root_label) < MIN_LOOKALIKE_LABEL_LENGTH:
@@ -336,7 +371,12 @@ def _domain_impersonation_signals(
         references = reference_domains
         if references is None:
             references = _load_reference_domains()
-        reference_index = _reference_domain_index(tuple(references))
+        references = tuple(references)
+        reference_index = _reference_domain_index(references)
+        if target_index is None:
+            target_index = _reference_domain_index(references[:target_limit])
+    if target_index is None:
+        target_index = reference_index
 
     signals = []
     exact_domain = reference_index.labels.get(normalized_root)
@@ -347,7 +387,7 @@ def _domain_impersonation_signals(
     if root_label == normalized_root and exact_domain:
         return []
 
-    candidates = _reference_domain_candidates(normalized_root, reference_index)
+    candidates = _reference_domain_candidates(normalized_root, target_index)
     for reference_label, reference_domain in candidates.items():
         if reference_label == normalized_root:
             continue
@@ -393,6 +433,7 @@ def predict_with_bundle(
     risk_signals = _domain_impersonation_signals(
         url,
         reference_index=_reference_index_from_metadata(metadata),
+        target_index=_target_index_from_metadata(metadata),
     )
     overridden = False
     if risk_signals and label == 0:
