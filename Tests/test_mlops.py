@@ -7,6 +7,7 @@ from Services.model_registry import (
     SERVING_REQUIREMENTS,
     PromotionCriteria,
     load_golden_set,
+    load_holdout_set,
     promotion_decision,
 )
 from Utilities.config import PROJECT_ROOT
@@ -123,7 +124,41 @@ def test_summarise_sources_counts_rows_per_source():
         "rows_from_uci": 1,
         "rows_from_kaggle": 1,
         "rows_in_both": 0,
+        "urls_with_conflicting_labels": 0,
     }
+
+
+def test_merge_drops_urls_labelled_both_ways():
+    # Same URL: legitimate in UCI (label 1), phishing in Kaggle. Neither label
+    # can be trusted, so the URL is dropped instead of keeping UCI's.
+    uci = pd.DataFrame(
+        {"URL": ["https://www.disputed.example", "https://www.uci-only.example"], "label": [1, 1]}
+    )
+    kaggle = preprocess_phishing(
+        pd.DataFrame(
+            {"URL": ["disputed.example", "kaggle-bad.example/verify"], "Label": ["bad", "bad"]}
+        )
+    )
+
+    merged = merge_data_service(DataToMerge(urls_uci=uci, urls_kaggle=kaggle))
+    stats = summarise_sources(uci, kaggle, merged)
+
+    assert "disputed.example" not in set(merged["URL"])
+    assert stats["urls_with_conflicting_labels"] == 1
+
+
+def test_holdout_set_is_well_formed():
+    holdout = load_holdout_set()
+
+    assert holdout is not None
+    assert holdout["url"].is_unique
+    assert holdout["label"].value_counts().to_dict() == {0: 1000, 1: 1000}
+    # Not the golden set: those are hand-picked checks, this is a random sample.
+    assert not set(holdout["url"]) & set(load_golden_set()["url"])
+
+
+def test_missing_holdout_set_means_none(tmp_path):
+    assert load_holdout_set(tmp_path / "missing.csv") is None
 
 
 def test_summarise_sources_counts_urls_present_in_both_sources():

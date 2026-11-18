@@ -4,7 +4,6 @@ import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Iterable, NamedTuple, Optional, Tuple
-from urllib.parse import urlparse
 
 import numpy as np
 import pandas as pd
@@ -20,6 +19,11 @@ from Utilities.Services.preprocess_data_utils import (
     apply_url_char_probability_model,
 )
 from Utilities.Services.feature_engineering_utils import add_all_new_features
+from Utilities.Services.url_utils import (
+    hostname_from_url as _hostname_from_url,
+    registered_domain as _registered_domain,
+    registered_domain_label as _registered_domain_label,
+)
 from Utilities.config import (
     CHAMPION_FILE_STEM,
     KAGGLE_TOP_SEARCHES_FILE_PATH,
@@ -52,16 +56,6 @@ LEETSPEAK_TRANSLATION = str.maketrans(
         "8": "b",
     }
 )
-
-COMMON_SECOND_LEVEL_SUFFIXES = {
-    "ac",
-    "co",
-    "com",
-    "edu",
-    "gov",
-    "net",
-    "org",
-}
 
 DEFAULT_REFERENCE_DOMAIN_LIMIT = 100_000
 MIN_LOOKALIKE_LABEL_LENGTH = 5
@@ -148,41 +142,6 @@ def _phishing_probability(model: Any, X: pd.DataFrame) -> float:
         return float(1 / (1 + np.exp(-raw_score)))
 
     return 0.0
-
-
-def _hostname_from_url(url: str) -> str:
-    parsed = urlparse(url if "://" in url else f"http://{url}")
-    return (parsed.hostname or "").lower().strip(".")
-
-
-def _registered_domain_label(hostname: str) -> str:
-    labels = [label for label in hostname.split(".") if label]
-    if len(labels) < 2:
-        return labels[0] if labels else ""
-
-    if (
-        len(labels) >= 3
-        and labels[-2] in COMMON_SECOND_LEVEL_SUFFIXES
-        and len(labels[-1]) == 2
-    ):
-        return labels[-3]
-
-    return labels[-2]
-
-
-def _registered_domain(hostname: str) -> str:
-    labels = [label for label in hostname.split(".") if label]
-    if len(labels) < 2:
-        return labels[0] if labels else ""
-
-    if (
-        len(labels) >= 3
-        and labels[-2] in COMMON_SECOND_LEVEL_SUFFIXES
-        and len(labels[-1]) == 2
-    ):
-        return ".".join(labels[-3:])
-
-    return ".".join(labels[-2:])
 
 
 def _compact_hostname_label(label: str) -> str:

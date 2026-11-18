@@ -8,7 +8,11 @@ import os
 
 import pytest
 
-from Services.inference_service import _load_model, predict_with_bundle
+from Services.inference_service import (
+    _load_model,
+    _preprocess_url_for_inference,
+    predict_with_bundle,
+)
 from Services.model_registry import bundle_predictor, golden_set_check
 from Utilities.config import CHAMPION_FILE_STEM, GOLDEN_SET_MIN_ACCURACY, MODELS_PATH
 
@@ -35,6 +39,17 @@ def test_served_model_passes_golden_set(model_name):
         f"Models/{model_name}.pkl scores {accuracy:.2f} on the golden set "
         f"(minimum {GOLDEN_SET_MIN_ACCURACY:.2f}). Wrong answers:\n{details}"
     )
+
+
+@pytest.mark.parametrize("model_name", SERVED)
+def test_inference_computes_every_feature_the_model_expects(model_name):
+    # predict_with_bundle reindexes to feature_names with fill_value=0, so a
+    # feature that inference stopped computing would silently become 0.
+    _, metadata = _load_served(model_name)
+
+    computed = set(_preprocess_url_for_inference("example.com/login").columns)
+
+    assert set(metadata["feature_names"]) <= computed
 
 
 # Uses the bundle's own reference list (top 100k domains), so these check the

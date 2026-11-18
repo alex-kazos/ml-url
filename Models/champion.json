@@ -1,18 +1,18 @@
 {
   "registered_model": "ml-url",
-  "version": "9",
+  "version": "21",
   "algorithm": "XGBoost",
-  "run_id": "7db8caaaee1842d0a17d8d3cf0988d7d",
+  "run_id": "cc2dec8f691b448781ecc350303a7b58",
   "metrics": {
-    "Accuracy": 0.8684,
-    "F1-Score": 0.8616,
-    "Precision": 0.9083,
-    "ROC-AUC": 0.9438,
-    "Recall": 0.8194,
-    "bundle_size_mb": 8.6178,
-    "golden_set_accuracy": 0.9375,
-    "inference_ms_p50": 71.7462,
-    "training_time_s": 3.9681
+    "Accuracy": 0.8661,
+    "F1-Score": 0.8592,
+    "Precision": 0.9047,
+    "ROC-AUC": 0.9412,
+    "Recall": 0.8181,
+    "bundle_size_mb": 8.6072,
+    "golden_set_accuracy": 0.9524,
+    "inference_ms_p50": 31.6079,
+    "training_time_s": 1.8
   },
-  "exported_at": "2026-09-30T16:52:12+00:00"
+  "exported_at": "2026-11-18T08:12:20+00:00"
 }

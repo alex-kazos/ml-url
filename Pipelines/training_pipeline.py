@@ -19,12 +19,19 @@ from Utilities.config import RAW_DATA_PATH  # noqa: E402
 from Utilities.Services.merge_data_utils import summarise_sources  # noqa: E402
 
 
-def run_training_pipeline() -> dict:
-    """Run extract -> preprocess -> merge -> features -> train, timing each stage."""
+def run_training_pipeline(extract: bool = True) -> dict:
+    """Run extract -> preprocess -> merge -> features -> train, timing each stage.
+
+    ``extract=False`` (``--skip-extract``) reuses the files already in
+    ``RAW_DATA_PATH``, e.g. to retrain on exactly the data of an earlier run.
+    """
     start_extract_time = time.time()
     # Step 1: Extract data. Downloads overwrite the files in Data/raw; the raw
     # folder is not wiped first, so a failed UCI download can reuse the saved copy.
-    extract_data_service(RAW_DATA_PATH)
+    if extract:
+        extract_data_service(RAW_DATA_PATH)
+    else:
+        print(f"Skipping extract: reusing the raw data in {RAW_DATA_PATH}")
     end_extract_time = time.time()
     print(f"Data extraction completed in {end_extract_time - start_extract_time:.2f} seconds.")
 
@@ -65,4 +72,4 @@ def run_training_pipeline() -> dict:
 
 
 if __name__ == "__main__":
-    run_training_pipeline()
+    run_training_pipeline(extract="--skip-extract" not in sys.argv)

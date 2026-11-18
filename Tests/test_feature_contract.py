@@ -13,12 +13,13 @@ from Services.inference_service import (
     _phishing_probability,
     _preprocess_url_for_inference,
 )
-from Services.model_training import prepare_data, render_model_comparison
+from Services.model_training import RETIRED_FEATURES, prepare_data, render_model_comparison
 from Utilities.Services.preprocess_data_utils import (
     URLCharacterProbabilityModel,
     _add_label_and_tld_prob_features,
     normalise_url,
 )
+from Utilities.Services.url_utils import split_registered_domain
 
 
 class PredictProbaModel:
@@ -103,10 +104,113 @@ def test_prepare_data_returns_feature_metadata():
         random_state=42,
     )
 
-    assert list(X_train.columns) == ["feature", "URLCharProb", "URLSimilarityIndex"]
+    # URLSimilarityIndex is URLCharProb x 100, so it is retired.
+    assert list(X_train.columns) == ["feature", "URLCharProb"]
     assert len(X_test) == 2
     assert sorted(y_train.unique().tolist()) == [0, 1]
     assert char_model is not None
+
+
+def test_prepare_data_fits_the_character_model_on_training_urls_only():
+    df = pd.DataFrame(
+        {
+            "URL": [f"site{i}.example/{'q' * i}" for i in range(10)] + ["zzzz.example/ZZZZ"] * 2,
+            "Label": ["good", "bad"] * 6,
+            "feature": range(12),
+            "label_binary": [0, 1] * 6,
+        }
+    )
+
+    X_train, X_test, _, _, char_model = prepare_data(df, test_size=0.25, random_state=0)
+
+    train_urls = df.loc[X_train.index, "URL"]
+    assert char_model.char_probs == URLCharacterProbabilityModel.fit(train_urls).char_probs
+    assert char_model.char_probs != URLCharacterProbabilityModel.fit(df["URL"]).char_probs
+    # Both splits are scored with that one model.
+    assert X_test["URLCharProb"].tolist() == [
+        char_model.score(u) for u in df.loc[X_test.index, "URL"]
+    ]
+
+
+def test_prepare_data_keeps_retired_features_out_of_new_models():
+    df = pd.DataFrame(
+        {
+            "URL": ["a.example", "b.example/login", "c.example", "d.example/verify"],
+            "Label": ["good", "bad", "good", "bad"],
+            "Pay": [0, 1, 0, 1],
+            "HasBrandName": [0, 1, 0, 0],
+            "PayNotBrandDomain": [0, 1, 0, 1],
+            "label_binary": [0, 1, 0, 1],
+        }
+    )
+
+    X_train, _, _, _, _ = prepare_data(df, test_size=0.5, random_state=42)
+
+    assert not set(RETIRED_FEATURES) & set(X_train.columns)
+    assert "PayNotBrandDomain" in X_train.columns
+
+
+def test_inference_still_computes_retired_features_for_older_bundles():
+    # The v9 champion lists these in feature_names; dropping them from the
+    # feature code would silently feed it zeros.
+    columns = set(_preprocess_url_for_inference("paypal.com").columns)
+
+    assert set(RETIRED_FEATURES) <= columns
+
+
+def _features(urls):
+    """Inference-time features of several URLs, indexed by (normalised) URL."""
+    rows = [_preprocess_url_for_inference(u) for u in urls]
+    return pd.concat(rows, ignore_index=True).set_index("URL")
+
+
+def test_brand_and_pay_features_ignore_the_brands_own_domain():
+    f = _features(
+        [
+            "paypal.com",
+            "login.paypal.com/signin",
+            "wellsfargo.com",
+            "paypal.com.account-verify.xyz/login.php",
+            "paypal-secure.com",
+            "paypal.com@evil.example/login",
+        ]
+    )
+    cols = ["BrandOutsideDomain", "BrandInDomainNotExact", "PayNotBrandDomain"]
+
+    assert f.loc["paypal.com", cols].tolist() == [0, 0, 0]
+    assert f.loc["login.paypal.com/signin", cols].tolist() == [0, 0, 0]
+    assert f.loc["wellsfargo.com", cols].tolist() == [0, 0, 0]
+    assert f.loc["paypal.com.account-verify.xyz/login.php", cols].tolist() == [1, 0, 1]
+    assert f.loc["paypal-secure.com", cols].tolist() == [0, 1, 1]
+    assert f.loc["paypal.com@evil.example/login", cols].tolist() == [1, 0, 1]
+    # The retired features still fire on the brand's own domain (v9 needs them as is).
+    assert f.loc["paypal.com", ["Pay", "HasBrandName"]].tolist() == [1, 1]
+
+
+def test_at_sign_features_tell_emails_and_user_info_from_handles():
+    f = _features(
+        [
+            "substack.com/@alexkazos",
+            "x.example/login.php?email=jo@example.com",
+            "paypal.com@evil.example/login",
+            "flickr.com/photos/37793774@N03/1",
+        ]
+    )
+    cols = ["NumEmailsInURL", "HasUserInfo"]
+
+    assert f.loc["substack.com/@alexkazos", cols].tolist() == [0, 0]
+    assert f.loc["x.example/login.php?email=jo@example.com", cols].tolist() == [1, 0]
+    assert f.loc["paypal.com@evil.example/login", "HasUserInfo"] == 1
+    assert f.loc["flickr.com/photos/37793774@N03/1", cols].tolist() == [0, 0]
+
+
+def test_split_registered_domain():
+    assert split_registered_domain("paypal.com") == ("paypal", "  ")
+    assert split_registered_domain("me@login.PayPal.com.evil.co.uk/pay?x=1") == (
+        "evil",
+        "me@ login.paypal.com /pay?x=1",
+    )
+    assert split_registered_domain("http://[::1") == ("", "http://[::1")
 
 
 def test_prepare_data_rejects_a_dataset_with_flipped_labels():

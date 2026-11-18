@@ -5,16 +5,18 @@ describes the latest run. Do not edit it by hand. The model the API serves is
 the promoted champion in `Models/champion.json`, which can come from an
 earlier run.
 
-Generated: 2026-09-30T16:42:05+00:00
+Generated: 2026-11-18T08:09:31+00:00
 
 ## Dataset
 
-- Rows: 411,080
-- From UCI: 149,677, from Kaggle: 261,982, in both: 579
-- Features: 43
-- Training set: 328,864
-- Test set: 82,216
+- Rows: 409,650
+- From UCI: 149,637, from Kaggle: 261,937, in both: 549
+- Holdout URLs kept out of training: 1,380 (`Models/holdout_set.csv`, used for promotion)
+- Features: 40
+- Training set: 327,720
+- Test set: 81,930
 - Not used as features: `URL`, `Domain`, `TLD`, `Label`, `TLDLegitimateProb`
+- Retired (still computed for older bundles): `HasTitle`, `NoOfSubDomain`, `HasObfuscation`, `URLSimilarityIndex`, `Pay`, `HasBrandName`, `NumAtSymbol`, `NoOfObfuscatedChar`, `ObfuscationRatio`
 
 ## Candidates
 
@@ -24,11 +26,11 @@ lookalike rule included, like the API.
 
 | Model | Version | Accuracy | Precision | Recall | F1-Score | ROC-AUC | Golden set | Bundle (MB) | p50 (ms) | Training (s) |
 |:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
-| Logistic Regression | v7 | 0.7860 | 0.8313 | 0.7177 | 0.7703 | 0.8659 | 0.8750 | 8.2 | 13.6 | 1.5 |
-| Random Forest | v8 | 0.8603 | 0.8675 | 0.8505 | 0.8589 | 0.9370 | 0.8750 | 695.3 | 53.9 | 15.0 |
-| XGBoost | v9 | 0.8684 | 0.9083 | 0.8194 | 0.8616 | 0.9438 | 0.9375 | 8.6 | 71.7 | 4.0 |
+| Logistic Regression | v19 | 0.7850 | 0.8315 | 0.7142 | 0.7684 | 0.8666 | 0.9048 | 8.2 | 14.1 | 1.3 |
+| Random Forest | v20 | 0.8546 | 0.8571 | 0.8505 | 0.8538 | 0.9308 | 0.8095 | 707.6 | 65.5 | 16.5 |
+| XGBoost | v21 | 0.8661 | 0.9047 | 0.8181 | 0.8592 | 0.9412 | 0.9524 | 8.6 | 31.6 | 1.8 |
 
-Challenger: **XGBoost** (v9), the best F1-Score among the candidates that pass the golden-set, precision and size gates. `Pipelines/promotion_pipeline.py` compares it with the champion on the same evaluation set before anything is served.
+Challenger: **XGBoost** (v21), the best F1-Score among the candidates that pass the golden-set, precision and size gates. `Pipelines/promotion_pipeline.py` compares it with the champion on the same evaluation set before anything is served.
 
 ## Label Contract
 

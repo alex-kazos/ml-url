@@ -27,6 +27,7 @@ from Services.model_registry import (
     bundle_predictor,
     configure_mlflow,
     golden_set_check,
+    load_holdout_set,
     log_bundle_model,
     measure_latency_ms,
     quality_gate_failures,
@@ -42,6 +43,22 @@ COLUMNS_TO_DROP: List[str] = [
     "TLD",
     "Label",
     "TLDLegitimateProb",
+]
+
+# Still computed, because the v9 champion lists them in its feature_names and
+# inference must keep feeding it the same inputs, but no longer given to new
+# models. Delete them from the feature code once no served bundle uses them.
+RETIRED_FEATURES: List[str] = [
+    "HasTitle",            # always 0: a URL almost never contains "<title>"
+    "NoOfSubDomain",       # NumSubdomains - 1
+    "HasObfuscation",      # NoOfObfuscatedChar > 0
+    "URLSimilarityIndex",  # URLCharProb x 100
+    "Pay",                 # fires on paypal.com itself -> PayNotBrandDomain
+    "HasBrandName",        # fires on the brand's own domain -> BrandOutsideDomain,
+                           # BrandInDomainNotExact
+    "NumAtSymbol",         # counts @handles -> NumEmailsInURL, HasUserInfo
+    "NoOfObfuscatedChar",  # "%" plus every "@" -> NumPercentChars, NumEmailsInURL
+    "ObfuscationRatio",    # NoOfObfuscatedChar / URLLength
 ]
 
 TARGET_COLUMN = "label_binary"
@@ -124,35 +141,40 @@ def prepare_data(
     pd.Series,
     Optional[URLCharacterProbabilityModel],
 ]:
-    """Drop non-feature columns and split into train / test."""
+    """Split into train / test, fit the URL character model, drop non-features.
+
+    The character model is fitted on the training URLs only and then applied
+    to both splits, so test URLs never shape the ``URLCharProb`` feature.
+    """
     if TARGET_COLUMN not in df.columns:
         raise ValueError(f"Missing target column: {TARGET_COLUMN}")
     check_label_contract(df)
 
-    url_char_model = (
-        URLCharacterProbabilityModel.fit(df["URL"]) if "URL" in df.columns else None
-    )
-    if url_char_model is not None:
-        df = apply_url_char_probability_model(
-            df.copy(),
-            df["URL"].astype(str),
-            url_char_model,
-        )
-
-    cols_to_drop = [c for c in COLUMNS_TO_DROP if c in df.columns]
-    if cols_to_drop:
-        df = df.drop(columns=cols_to_drop)
-        print(f"  Dropped columns: {cols_to_drop}")
-
     X = df.drop(columns=[TARGET_COLUMN])
     y = df[TARGET_COLUMN]
-
     X_train, X_test, y_train, y_test = _train_test_split(
         X,
         y,
         test_size=test_size,
         random_state=random_state,
     )
+
+    url_char_model = None
+    if "URL" in X_train.columns:
+        url_char_model = URLCharacterProbabilityModel.fit(X_train["URL"])
+        X_train = apply_url_char_probability_model(
+            X_train.copy(), X_train["URL"].astype(str), url_char_model
+        )
+        X_test = apply_url_char_probability_model(
+            X_test.copy(), X_test["URL"].astype(str), url_char_model
+        )
+
+    cols_to_drop = [c for c in COLUMNS_TO_DROP + RETIRED_FEATURES if c in X_train.columns]
+    if cols_to_drop:
+        X_train = X_train.drop(columns=cols_to_drop)
+        X_test = X_test.drop(columns=cols_to_drop)
+        print(f"  Dropped columns: {cols_to_drop}")
+
     print(f"  Train set: {X_train.shape[0]:,} samples")
     print(f"  Test  set: {X_test.shape[0]:,} samples")
     print(f"  Features:  {X_train.shape[1]}")
@@ -330,11 +352,18 @@ def render_model_comparison(
             f"- From UCI: {_n('rows_from_uci')}, from Kaggle: {_n('rows_from_kaggle')}, "
             f"in both: {_n('rows_in_both')}"
         )
+    if dataset.get("holdout_excluded"):
+        lines.append(
+            f"- Holdout URLs kept out of training: {_n('holdout_excluded')} "
+            "(`Models/holdout_set.csv`, used for promotion)"
+        )
     lines += [
         f"- Features: {_n('features')}",
         f"- Training set: {_n('train')}",
         f"- Test set: {_n('test')}",
         "- Not used as features: " + ", ".join(f"`{c}`" for c in COLUMNS_TO_DROP),
+        "- Retired (still computed for older bundles): "
+        + ", ".join(f"`{c}`" for c in RETIRED_FEATURES),
         "",
         "## Candidates",
         "",
@@ -435,6 +464,14 @@ def model_training_service(
     models_dir = Path(models_dir)
     models_dir.mkdir(parents=True, exist_ok=True)
 
+    holdout = load_holdout_set()
+    holdout_excluded = 0
+    if holdout is not None and "URL" in df.columns:
+        in_holdout = df["URL"].astype(str).isin(set(holdout["url"]))
+        holdout_excluded = int(in_holdout.sum())
+        df = df.loc[~in_holdout]
+        print(f"Excluded {holdout_excluded:,} holdout URLs from training and testing")
+
     urls = df["URL"].astype(str) if "URL" in df.columns else None
     X_train, X_test, y_train, y_test, url_char_model = prepare_data(
         df,
@@ -444,12 +481,13 @@ def model_training_service(
     feature_names = list(X_train.columns)
     reference_domains = list(_load_reference_domains())
 
-    eval_set = None
-    latency_urls: List[str] = []
-    if urls is not None:
+    # The frozen holdout is what promotion compares models on; without one,
+    # fall back to a sample of this run's test split.
+    eval_set = holdout
+    if eval_set is None and urls is not None:
         test_urls = urls.loc[X_test.index]
         eval_set = build_eval_set(test_urls, y_test, random_state=random_state)
-        latency_urls = eval_set["url"].head(50).tolist()
+    latency_urls = eval_set["url"].head(50).tolist() if eval_set is not None else []
 
     client = configure_mlflow()
     print(f"MLflow tracking URI: {mlflow.get_tracking_uri()}")
@@ -468,6 +506,8 @@ def model_training_service(
             mlflow.log_param("n_features", len(feature_names))
             mlflow.log_param("n_train", len(X_train))
             mlflow.log_param("n_test", len(X_test))
+            mlflow.log_param("n_holdout_excluded", holdout_excluded)
+            mlflow.log_param("eval_set", "holdout" if holdout is not None else "test split")
             if dataset_stats:
                 mlflow.log_params({f"data_{k}": v for k, v in dataset_stats.items()})
 
@@ -563,6 +603,7 @@ def model_training_service(
                 "features": len(feature_names),
                 "train": len(X_train),
                 "test": len(X_test),
+                "holdout_excluded": holdout_excluded,
                 **(dataset_stats or {}),
             },
         ),

@@ -53,6 +53,12 @@ EVAL_SAMPLE_SIZE = int(_get_env('EVAL_SAMPLE_SIZE', '2000'))
 GOLDEN_SET_PATH = PROJECT_ROOT / os.getenv('GOLDEN_SET_PATH', 'Models/golden_set.csv')
 GOLDEN_SET_MIN_ACCURACY = float(_get_env('GOLDEN_SET_MIN_ACCURACY', '0.75'))
 
+# Holdout set: fixed, labelled URLs (url,label) that are removed from every
+# training run and used to compare champion and challenger, so neither model
+# is scored on URLs it trained on. Frozen from the v9 run's evaluation set
+# (2,000 URLs from its test split). No '#' comments: some URLs contain '#'.
+HOLDOUT_SET_PATH = PROJECT_ROOT / os.getenv('HOLDOUT_SET_PATH', 'Models/holdout_set.csv')
+
 # Lookalike rule: typosquat candidates come only from the top N reference domains
 # (by rank). Exact and leetspeak matches still use the whole reference list, so a
 # known site is never flagged, but an unknown one is not matched against obscure

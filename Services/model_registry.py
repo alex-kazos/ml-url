@@ -36,6 +36,7 @@ from Utilities.config import (
     EVAL_SAMPLE_SIZE,
     GOLDEN_SET_MIN_ACCURACY,
     GOLDEN_SET_PATH,
+    HOLDOUT_SET_PATH,
     MAX_BUNDLE_MB,
     MLFLOW_EXPERIMENT_NAME,
     MLFLOW_MODEL_NAME,
@@ -95,6 +96,15 @@ def load_golden_set(path: Path = GOLDEN_SET_PATH) -> pd.DataFrame:
     """Hand-picked URLs with known labels (1 = phishing, 0 = legitimate)."""
     golden = pd.read_csv(path, comment="#")
     return golden[["url", "label"]].astype({"url": str, "label": int})
+
+
+def load_holdout_set(path: Path = HOLDOUT_SET_PATH) -> Optional[pd.DataFrame]:
+    """The frozen champion-vs-challenger evaluation set, or None if there is none."""
+    path = Path(path)
+    if not path.exists():
+        return None
+    holdout = pd.read_csv(path)
+    return holdout[["url", "label"]].astype({"url": str, "label": int})
 
 
 def golden_set_check(
@@ -348,11 +358,18 @@ def promote_challenger(criteria: PromotionCriteria = PromotionCriteria()) -> Dic
         return {"promoted": False, "reasons": ["challenger is already champion"],
                 "challenger_version": challenger.version, "champion_version": champion.version}
 
-    eval_path = mlflow.artifacts.download_artifacts(
-        run_id=challenger.run_id, artifact_path=EVAL_SET_ARTIFACT
-    )
-    eval_df = pd.read_csv(eval_path)
-    print(f"Evaluation set: {len(eval_df):,} held-out URLs from run {challenger.run_id}")
+    eval_df = load_holdout_set()
+    eval_source = "holdout" if eval_df is not None else "challenger test split"
+    if eval_df is not None:
+        print(f"Evaluation set: {len(eval_df):,} URLs from the frozen holdout {HOLDOUT_SET_PATH.name}")
+    else:
+        # No frozen holdout: fall back to the challenger's own test-split sample,
+        # which the champion may have trained on.
+        eval_path = mlflow.artifacts.download_artifacts(
+            run_id=challenger.run_id, artifact_path=EVAL_SET_ARTIFACT
+        )
+        eval_df = pd.read_csv(eval_path)
+        print(f"Evaluation set: {len(eval_df):,} held-out URLs from run {challenger.run_id}")
 
     print(f"Scoring challenger v{challenger.version} ...")
     challenger_metrics = score_version(challenger, eval_df)
@@ -370,6 +387,8 @@ def promote_challenger(criteria: PromotionCriteria = PromotionCriteria()) -> Dic
                 "challenger_version": challenger.version,
                 "champion_version": champion.version if champion else "none",
                 "decision": "promote" if promote else "keep",
+                "eval_set": eval_source,
+                "eval_set_size": len(eval_df),
                 **{f"criteria_{k}": v for k, v in asdict(criteria).items()},
             }
         )

@@ -38,8 +38,14 @@ The training pipeline:
    cannot be reached, the copy saved there by an earlier run is reused (with a
    warning); the UCI dataset is a fixed snapshot, so nothing is lost.
 2. Builds URL-derived features.
-3. Merges, deduplicates, and balances the datasets.
+3. Merges, deduplicates, and balances the datasets. URLs that appear labelled
+   both legitimate and phishing (across or within sources) are dropped.
 4. Adds additional URL, domain, path, query, entropy, and keyword features.
+   Brand names and "pay" only count outside the registered domain or in a
+   domain the brand does not own (`paypal.com` itself is not suspicious,
+   `paypal.com.account-verify.xyz` and `paypal-secure.com` are), and "@" only
+   counts as an email address or as user info before the host, not as a
+   profile handle (`substack.com/@name`).
 5. Trains Logistic Regression (with scaled inputs), Random Forest, and XGBoost
    baselines.
 6. Saves each model as a bundled artifact with:
@@ -75,6 +81,9 @@ names.
 
 ```powershell
 python Pipelines\training_pipeline.py
+
+# Reuse the files already in Data/raw instead of downloading them again
+python Pipelines\training_pipeline.py --skip-extract
 ```
 
 Training writes generated datasets under `Data/` and model artifacts under
@@ -96,7 +105,7 @@ releases no longer accept the old `./mlruns` file store for new runs.
 # 1. Train: logs every candidate, registers versions, sets the "challenger" alias
 python Pipelines\training_pipeline.py
 
-# 2. Compare challenger vs champion on the same held-out URLs, then export
+# 2. Compare challenger vs champion on the frozen holdout set, then export
 python Pipelines\promotion_pipeline.py
 
 # Or both in one go (e.g. on a weekly schedule)
@@ -108,7 +117,14 @@ mlflow ui --backend-store-uri sqlite:///mlflow.db
 
 Each run logs the usual metrics plus what it costs to serve the model:
 `bundle_size_mb`, `inference_ms_p50` and `golden_set_accuracy`, and how many
-rows each data source contributed (`data_rows_from_uci`, `data_rows_from_kaggle`).
+rows each data source contributed (`data_rows_from_uci`, `data_rows_from_kaggle`,
+`data_rows_in_both`, `data_urls_with_conflicting_labels`).
+
+Champion and challenger are compared on `Models/holdout_set.csv`: 2,000
+labelled URLs (half phishing) frozen from the v9 run's test split. Every
+training run removes them from its data before the train/test split, so no
+model is ever scored on URLs it trained on, and every promotion uses the same
+yardstick. The URL character model is fitted on the training split only.
 
 Every challenger must pass absolute gates:
 
@@ -227,6 +243,12 @@ The first tests cover the project contracts that are easiest to break:
 - A champion that fails its own gates cannot block a healthy challenger.
 - The serving pins in `requirements-api.txt` match the ones logged with every
   MLflow model.
+- Inference computes every feature a served bundle lists, including the
+  retired ones older bundles still use, so none silently becomes 0.
+- New models never see retired features; the character model is fitted on
+  the training split only; URLs labelled both ways are dropped; the holdout
+  set stays out of training.
+- Brand, pay and "@" features ignore a brand's own domain and profile handles.
 - Rows from both UCI and Kaggle survive the merge with correctly mapped labels
   (UCI uses a lowercase `label` column where 1 = legitimate).
 - URLs are normalised (scheme, leading `www.` and trailing `/` removed) before
@@ -243,27 +265,20 @@ The first tests cover the project contracts that are easiest to break:
 
 ## Recommended Next Steps
 
-These need a retrain, so they go into one training run together:
-
-- Count brand names and `pay` only outside the registered domain (subdomain,
-  path, query) or in a domain that is not the brand itself. Today `paypal.com`
-  scores 0.79 because `Pay` and `HasBrandName` fire on the brand's own domain.
-- Check whether "subdomain and no path" has become a source signal (UCI's
-  legitimate rows are mostly bare `www.domain.tld` homepages). The bare homepage
-  of a Substack publication still scores as phishing; post URLs score below 0.03.
-- Fit the URL character model on the training split only (it is fitted on all
-  rows before the split today).
-- Drop features that add nothing: `HasTitle`, `NoOfSubDomain`
-  (`NumSubdomains` - 1), `HasObfuscation` (`NoOfObfuscatedChar > 0`) and
-  `URLSimilarityIndex` (`URLCharProb` x 100). Drop them at training time, not
-  from the feature code, while the current champion still uses them.
-- Drop URLs whose label differs between UCI and Kaggle instead of keeping the
-  first one.
-- Freeze one versioned holdout set for champion vs challenger, kept out of
-  every training run, so a champion is never scored on URLs it trained on.
-
-Later:
-
+- The bare homepage of a user subdomain on a platform
+  (`alexkazos.substack.com`, `name.medium.com`) still scores as phishing
+  (about 0.65); post URLs on the same host score below 0.03. In the training
+  data, UCI's legitimate rows never have a path, and hosts with a subdomain
+  but no path are 77% phishing, mostly real phishing on free hosting
+  (`xxx.web.app`, `xxx.firebaseapp.com`). From the string alone a reputable
+  platform's user subdomain looks the same. Fixing it needs information
+  beyond the string, such as the registered domain's popularity rank from a
+  newer list than `top-1m.csv` (which does not contain `substack.com`), or
+  legitimate platform-subdomain URLs in the training data.
+- `Bank` and `Crypto` still fire on domains that own the word
+  (`bankofamerica.com`, `crypto.com`), as `Pay` did before v21.
+- Once no served bundle lists them, delete the retired features
+  (`RETIRED_FEATURES` in `Services/model_training.py`) from the feature code.
 - Add hyperparameter tuning now that label, feature and promotion contracts
   are in place.
 - Add host-based signals (domain age, certificate details) for URLs where the
