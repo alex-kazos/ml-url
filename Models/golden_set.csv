@@ -8,8 +8,8 @@
 #   lookalike rule (typosquat of tubestack.com). v9 itself flagged paypal.com
 #   (brand / pay features fired inside the brand's own domain) and
 #   substack.com/@alexkazos (every "@" counted as phishing); v21 fixes both.
-#   The bare Substack subdomain is still a known miss: hosts with a subdomain
-#   but no path look like phishing (see Recommended Next Steps in the README).
+#   The bare Substack subdomain still looks like phishing to the model (hosts
+#   with a subdomain but no path); the content-platform rule clears it.
 #   linkedln.com and faceb00k.com check that the rule still catches typosquats.
 # Note: lines starting with '#' are comments, so don't add URLs containing '#'.
 url,label

@@ -48,6 +48,21 @@ def test_predict_records_verdict_override_and_input_signals(monkeypatch):
     assert _value("mlurl_prediction_latency_seconds_count") == before["latency"] + 1
 
 
+def test_predict_counts_content_platform_overrides(monkeypatch):
+    def _predict(url, model_name=None):
+        result = {"url": url, "label": 0, "probability": 0.15, "verdict": "[OK] LEGITIMATE",
+                  "trust_signals": ["content-platform:substack.com"]}
+        return result, {"model_label": 1, "overridden": False, "platform_override": True}
+
+    monkeypatch.setattr(api, "predict_url", _predict)
+    before = _value("mlurl_platform_overrides_total")
+
+    body = client.post("/predict", json={"url": "https://alexkazos.substack.com"}).json()
+
+    assert body["trust_signals"] == ["content-platform:substack.com"]
+    assert _value("mlurl_platform_overrides_total") == before + 1
+
+
 def test_public_response_shape_is_unchanged(monkeypatch):
     monkeypatch.setattr(api, "predict_url", _fake_predict(0))
 

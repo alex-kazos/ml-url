@@ -57,6 +57,10 @@ PREDICTIONS = Counter(
 LOOKALIKE_OVERRIDES = Counter(
     "mlurl_lookalike_overrides", "Legitimate model verdicts flipped by the lookalike-domain check."
 )
+PLATFORM_OVERRIDES = Counter(
+    "mlurl_platform_overrides",
+    "Phishing model verdicts flipped to legitimate by the content-platform rule.",
+)
 RISK_SIGNALS = Counter(
     "mlurl_risk_signals", "Lookalike risk signals raised, by type.", ["signal_type"]
 )
@@ -137,6 +141,8 @@ def predict(payload: PredictRequest):
     PHISHING_PROBABILITY.observe(result["probability"])
     if details["overridden"]:
         LOOKALIKE_OVERRIDES.inc()
+    if details.get("platform_override"):
+        PLATFORM_OVERRIDES.inc()
     for signal in result.get("risk_signals", []):
         RISK_SIGNALS.labels(signal_type=signal.split(":", 1)[0]).inc()
 

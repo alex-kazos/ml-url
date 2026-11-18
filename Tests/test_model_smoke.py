@@ -65,6 +65,23 @@ def test_lookalike_rule_leaves_legitimate_sites_alone(model_name, url):
 
 
 @pytest.mark.parametrize("model_name", SERVED)
+@pytest.mark.parametrize(
+    "url, expected",
+    [
+        ("https://alexkazos.substack.com", 0),
+        ("alexkazos.medium.com", 0),
+        ("paypal.substack.com/login", 1),
+    ],
+)
+def test_content_platform_pages_are_legitimate_unless_they_impersonate(model_name, url, expected):
+    model, metadata = _load_served(model_name)
+
+    result, _ = predict_with_bundle(url, model, metadata)
+
+    assert result["label"] == expected, result
+
+
+@pytest.mark.parametrize("model_name", SERVED)
 @pytest.mark.parametrize("url", ["linkedln.com", "faceb00k.com", "paypa1.com"])
 def test_lookalike_rule_still_catches_typosquats(model_name, url):
     model, metadata = _load_served(model_name)

@@ -57,6 +57,23 @@ LEETSPEAK_TRANSLATION = str.maketrans(
     }
 )
 
+# Content platforms: registered domains whose user subdomains and pages are
+# publications on a platform that does not let users serve their own HTML or
+# JavaScript, so no page there can be a fake login form. The model has no
+# examples of them (substack.com is in neither the training data nor
+# top-1m.csv) and scores a bare user subdomain such as alexkazos.substack.com
+# as phishing, because most bare user subdomains in the data are phishing on
+# free hosting. Never add hosting that serves arbitrary HTML: github.io,
+# blogspot.com, web.app and firebaseapp.com are full of phishing in the data.
+CONTENT_PLATFORM_DOMAINS = frozenset({"substack.com", "medium.com"})
+# Probability reported when the content-platform rule overrides the model,
+# the mirror image of the 0.85 floor of the lookalike override.
+CONTENT_PLATFORM_MAX_PROBABILITY = 0.15
+# Features that still point to a scam on a content platform (a brand name in
+# the subdomain or path, an email address, user info before the host): when
+# any fires, the model decides on its own.
+CONTENT_PLATFORM_BLOCKING_FEATURES = ("BrandOutsideDomain", "NumEmailsInURL", "HasUserInfo")
+
 DEFAULT_REFERENCE_DOMAIN_LIMIT = 100_000
 MIN_LOOKALIKE_LABEL_LENGTH = 5
 
@@ -357,6 +374,21 @@ def _domain_impersonation_signals(
     return signals
 
 
+def _content_platform_signals(url: str, features: Dict[str, Any]) -> list[str]:
+    """Flag a page on a content platform (see ``CONTENT_PLATFORM_DOMAINS``).
+
+    Matches on the registered domain, so ``substack.com.evil.xyz`` and
+    ``substack-login.com`` never qualify, and stays silent when a brand name,
+    an email address or user info is in the URL.
+    """
+    domain = _registered_domain(_hostname_from_url(url))
+    if domain not in CONTENT_PLATFORM_DOMAINS:
+        return []
+    if any(features.get(name, 0) for name in CONTENT_PLATFORM_BLOCKING_FEATURES):
+        return []
+    return [f"content-platform:{domain}"]
+
+
 def predict_with_bundle(
     url: str,
     model: Any,
@@ -372,7 +404,13 @@ def predict_with_bundle(
     tuple
         ``(result, details)``: ``result`` is the public response and
         ``details`` holds internals that monitoring needs (the raw model label,
-        whether the lookalike check overrode it, feature counts).
+        whether the lookalike or the content-platform rule overrode it,
+        feature counts).
+
+    Two rules sit on top of the model. The lookalike rule turns a legitimate
+    verdict into phishing (``risk_signals``); the content-platform rule turns a
+    phishing verdict into legitimate (``trust_signals``) for pages on
+    platforms that cannot host a fake login form. A risk signal always wins.
     """
     feature_df = _preprocess_url_for_inference(
         url,
@@ -400,6 +438,15 @@ def predict_with_bundle(
         phishing_probability = max(phishing_probability, 0.85)
         overridden = True
 
+    trust_signals = (
+        [] if risk_signals else _content_platform_signals(url, feature_df.iloc[0].to_dict())
+    )
+    platform_override = False
+    if trust_signals and label == 1:
+        label = 0
+        phishing_probability = min(phishing_probability, CONTENT_PLATFORM_MAX_PROBABILITY)
+        platform_override = True
+
     verdict = "[!] SUSPICIOUS / PHISHING" if label == 1 else "[OK] LEGITIMATE"
 
     result = {
@@ -410,10 +457,13 @@ def predict_with_bundle(
     }
     if risk_signals:
         result["risk_signals"] = risk_signals
+    if trust_signals:
+        result["trust_signals"] = trust_signals
 
     details = {
         "model_label": model_label,
         "overridden": overridden,
+        "platform_override": platform_override,
         "raw_feature_columns": feature_df.shape[1],
         "model_feature_columns": X.shape[1],
     }
@@ -464,6 +514,8 @@ def inference_service(
     print(f"    Probability : {phishing_probability:.4f}  (probability of phishing)")
     if risk_signals:
         print(f"    Risk signals: {', '.join(risk_signals)}")
+    if result.get("trust_signals"):
+        print(f"    Trust signals: {', '.join(result['trust_signals'])}")
     print(f"    Verdict     : {verdict}")
     print(f"{'='*60}\n")
 
