@@ -4,6 +4,8 @@ import pandas as pd
 import pytest
 
 from Services.inference_service import (
+    CONTENT_PLATFORM_DOMAINS,
+    predict_with_bundle,
     _domain_impersonation_signals,
     _drop_non_feature_columns,
     _reference_domain_candidates,
@@ -396,6 +398,67 @@ def test_inference_overrides_legitimate_prediction_for_brand_lookalike(tmp_path)
     assert result["probability"] == 0.85
     assert result["verdict"] == "[!] SUSPICIOUS / PHISHING"
     assert result["risk_signals"] == ["domain-lookalike:g00gle->google.com"]
+
+
+class PhishingModel:
+    classes_ = [0, 1]
+
+    def predict(self, X):
+        return [1]
+
+    def predict_proba(self, X):
+        return [[0.35, 0.65]]
+
+
+PHISHING_BUNDLE = {"feature_names": ["URLLength"], "reference_domains": ["google.com"]}
+
+
+def test_content_platform_rule_overrides_a_phishing_verdict():
+    result, details = predict_with_bundle(
+        "https://alexkazos.substack.com", PhishingModel(), PHISHING_BUNDLE
+    )
+
+    assert result["label"] == 0
+    assert result["probability"] == 0.15
+    assert result["trust_signals"] == ["content-platform:substack.com"]
+    assert details["model_label"] == 1
+    assert details["platform_override"] is True
+
+
+def test_content_platform_rule_leaves_tricks_and_hosting_to_the_model():
+    for url in [
+        "paypal.substack.com/login",  # brand in the subdomain
+        "alexkazos.substack.com/?email=jo@example.com",  # victim's email
+        "paypal.com@alexkazos.substack.com",  # user info before the host
+        "substack.com.account-verify.xyz/login",  # platform name, other domain
+        "substack-login.com",  # platform name inside another domain
+        "alexkazos.github.io",  # hosting that serves arbitrary HTML
+    ]:
+        result, details = predict_with_bundle(url, PhishingModel(), PHISHING_BUNDLE)
+
+        assert result["label"] == 1, url
+        assert "trust_signals" not in result, url
+        assert details["platform_override"] is False, url
+
+
+def test_lookalike_signal_beats_the_content_platform_rule():
+    # With tubestack.com as a typosquat target, "substack" raises a risk signal.
+    bundle = {"feature_names": ["URLLength"], "reference_domains": ["tubestack.com"]}
+
+    result, details = predict_with_bundle("alexkazos.substack.com", PhishingModel(), bundle)
+
+    assert result["label"] == 1
+    assert result["risk_signals"] == ["domain-typosquat:substack->tubestack.com"]
+    assert "trust_signals" not in result
+
+
+def test_content_platforms_exclude_hosting_that_serves_arbitrary_html():
+    # These host phishing in the training data (web.app and firebaseapp.com
+    # 100% of their bare subdomains, github.io too); a fake login form fits
+    # on any of them.
+    hosting = {"github.io", "blogspot.com", "web.app", "firebaseapp.com", "weeblysite.com"}
+
+    assert not CONTENT_PLATFORM_DOMAINS & hosting
 
 
 def test_drop_non_feature_columns_keeps_engineered_features():

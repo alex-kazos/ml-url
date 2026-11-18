@@ -174,6 +174,7 @@ The API exposes Prometheus metrics at `/metrics` (set `METRICS_TOKEN` to require
 |:--|:--|
 | `mlurl_predictions_total{verdict}` | Traffic and the share of phishing verdicts |
 | `mlurl_lookalike_overrides_total` | How often the lookalike rule overrides the model |
+| `mlurl_platform_overrides_total` | How often the content-platform rule overrides the model |
 | `mlurl_risk_signals_total{signal_type}` | Lookalike / typosquat signals raised |
 | `mlurl_prediction_latency_seconds` | End-to-end latency histogram |
 | `mlurl_phishing_probability` | Distribution of scores (output drift) |
@@ -216,6 +217,24 @@ top 100,000 domains of `top-1m.csv`; typosquats (up to two edits away, such as
 Matching an unknown site against all 100,000 always finds some obscure domain
 two edits away (`substack.com` -> `tubestack.com`), and nobody typosquats those.
 
+A second rule works the other way. The model scores the bare homepage of a
+user subdomain (`alexkazos.substack.com`) as phishing: in the training data,
+hosts with a subdomain and no path are 77% phishing, almost all of it on free
+hosting (`*.web.app` and `*.firebaseapp.com` alone are about 11,000 rows, all
+phishing), and `substack.com` appears neither in the data nor in
+`top-1m.csv`. So a short, hand-kept list of content platforms
+(`CONTENT_PLATFORM_DOMAINS` in `Services/inference_service.py`: `substack.com`,
+`medium.com`) turns a phishing verdict into legitimate (probability capped at
+0.15, `trust_signals` in the response) for pages on those domains. Only
+platforms that do not let users serve their own HTML or JavaScript qualify, as
+no fake login form can live there; hosting that does (`github.io`,
+`blogspot.com`, `web.app`) is excluded by a test. The rule matches the
+registered domain, so `substack.com.account-verify.xyz` and
+`substack-login.com` never qualify, and it stays silent when a brand name, an
+email address or user info is in the URL (`paypal.substack.com/login`) or when
+the lookalike rule fires. It is an exception chosen by hand, not learned from
+data: add a platform only with the same reasoning.
+
 `/predict` accepts URLs of 1 to 2,048 characters; anything else gets a 422.
 CORS origins come from `API_ALLOWED_ORIGINS` (comma-separated); when it is
 unset, the API allows `alexkazos.com`, `www.alexkazos.com` and
@@ -254,6 +273,10 @@ The first tests cover the project contracts that are easiest to break:
   the training split only; URLs labelled both ways are dropped; the holdout
   set stays out of training.
 - Brand, pay and "@" features ignore a brand's own domain and profile handles.
+- The content-platform rule clears pages on its platforms but not brand
+  impersonation, emails, user info or look-alike domains there, a lookalike
+  signal always wins, and the list never contains hosting that serves
+  arbitrary HTML.
 - Rows from both UCI and Kaggle survive the merge with correctly mapped labels
   (UCI uses a lowercase `label` column where 1 = legitimate).
 - URLs are normalised (scheme, leading `www.` and trailing `/` removed) before
@@ -270,16 +293,14 @@ The first tests cover the project contracts that are easiest to break:
 
 ## Recommended Next Steps
 
-- The bare homepage of a user subdomain on a platform
-  (`alexkazos.substack.com`, `name.medium.com`) still scores as phishing
-  (about 0.65); post URLs on the same host score below 0.03. In the training
-  data, UCI's legitimate rows never have a path, and hosts with a subdomain
-  but no path are 77% phishing, mostly real phishing on free hosting
-  (`xxx.web.app`, `xxx.firebaseapp.com`). From the string alone a reputable
-  platform's user subdomain looks the same. Fixing it needs information
-  beyond the string, such as the registered domain's popularity rank from a
-  newer list than `top-1m.csv` (which does not contain `substack.com`), or
-  legitimate platform-subdomain URLs in the training data.
+- Outside the content-platform list, the model still tends to score the bare
+  homepage of a user subdomain on a platform it has no examples of as
+  phishing. A popularity rank of the registered domain would not fix it:
+  phishing lives on popular platforms too (`github.io` is rank 168 and its 53
+  bare subdomains in the data are all phishing), and phishing rows on top-10k
+  domains (17%) are barely rarer than legitimate ones (29%). What would help is
+  the phishing rate per registered domain, learned out-of-fold on the training
+  split, plus legitimate platform-subdomain URLs in the data.
 - `Bank` and `Crypto` still fire on domains that own the word
   (`bankofamerica.com`, `crypto.com`), as `Pay` did before v21.
 - Once no served bundle lists them, delete the retired features
